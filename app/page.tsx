@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useStudioMotion } from '@/hooks/use-studio-motion';
-import type { Texture } from '@/lib/background';
+import {setBackgroundImage,type Texture} from '@/lib/background';
 import {
   Film,
   Upload,
@@ -60,7 +60,7 @@ import {
   type Project,
   type Zoom,
 } from '@/lib/editor';
-import { storeVideo, restoreVideo } from '@/lib/storage';
+import { storeVideo, restoreVideo,backgroundFile } from '@/lib/storage';
 
 function Range({
   label,
@@ -151,6 +151,9 @@ export default function Home() {
     [exporting, setExporting] = useState(false),
     [progress, setProgress] = useState(0),
     [quality, setQuality] = useState('1080'),
+    [fps,setFps]=useState('60'),
+    [encodingQuality,setEncodingQuality]=useState('high'),
+    [backgroundName,setBackgroundName]=useState(''),
     [history, setHistory] = useState<Project[]>([]),
     [future, setFuture] = useState<Project[]>([]),
     [dragging, setDragging] = useState(false),
@@ -159,6 +162,7 @@ export default function Home() {
   const canvas = useRef<HTMLCanvasElement>(null),
     video = useRef<HTMLVideoElement>(null),
     fileInput = useRef<HTMLInputElement>(null),
+    backgroundInput=useRef<HTMLInputElement>(null),
     projectInput = useRef<HTMLInputElement>(null),
     live = useRef({ p, time, playing }),
     cancel = useRef(false),
@@ -174,7 +178,10 @@ export default function Home() {
     caption = p.captions.find((c) => c.id === selected),
     clip = p.clips.find((c) => c.id === selectedClip);
   const [W, H] = size(p.ratio);
+  const bitrate=Math.round(8000000*(Number(quality)/1080)**2*(Number(fps)/30)*(encodingQuality==='maximum'?1.5:encodingQuality==='compact'?.6:1));
   const inform = useCallback((s: string) => setNotice(s), []);
+  useEffect(()=>{let active=true;backgroundFile().then(async file=>{if(!file||!active)return;await setBackgroundImage(file);if(active){setBackgroundName(file.name);setP(old=>({...old}));}}).catch(()=>inform('Background image could not be restored. Upload it again.'));return()=>{active=false;};},[inform]);
+  async function uploadBackground(file?:File){if(!file)return;if(!['image/png','image/jpeg','image/webp'].includes(file.type)){inform('Choose a PNG, JPG, or WebP image.');return;}if(file.size>20*1024*1024){inform('Choose a background smaller than 20 MB.');return;}try{await setBackgroundImage(file);setBackgroundName(file.name);update({backgroundMode:'image'});try{await backgroundFile(file);inform('Background image saved on this device.');}catch{inform('Image loaded, but could not be saved. Keep this tab open.');}}catch{inform('That image could not be opened. Try another PNG, JPG, or WebP.');}}
   const lastEdit = useRef({ key: '', at: 0 });
   const update = useCallback((patch: Partial<Project>) => {
     const old = live.current.p,
@@ -502,7 +509,7 @@ export default function Home() {
       [ew, eh] = size(p.ratio, Number(quality));
     out.width = ew;
     out.height = eh;
-    const stream = out.captureStream(30),
+    const stream = out.captureStream(Number(fps)),
       v = video.current;
     let dest: MediaStreamAudioDestinationNode | undefined,
       raf = 0;
@@ -549,7 +556,7 @@ export default function Home() {
       renderFrame(out, p, 0, videoUrl ? v : null);
       const recorder = new MediaRecorder(stream, {
           mimeType: mime,
-          videoBitsPerSecond: 8000000,
+          videoBitsPerSecond: bitrate,
         }),
         chunks: BlobPart[] = [];
       const done = new Promise<Blob>((resolve, reject) => {
@@ -699,6 +706,7 @@ export default function Home() {
         if (!exporting) void importFile(e.dataTransfer.files[0]);
       }}
     >
+      <input ref={backgroundInput} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={e=>{void uploadBackground(e.target.files?.[0]);e.target.value='';}}/>
       <input
         ref={fileInput}
         type="file"
@@ -835,6 +843,9 @@ export default function Home() {
               <div className="section-heading">
                 Background <span>{themes[p.theme].name}</span>
               </div>
+              <Choice label="Background type" value={p.backgroundMode??'preset'} options={[["preset","Preset gradients"],["color","Custom color"],["image","Your image"]]} onChange={v=>update({backgroundMode:v as 'preset'|'color'|'image'})}/>
+              {p.backgroundMode==='color'&&<div className="custom-background"><label htmlFor="bg-color">Background color</label><input id="bg-color" aria-label="Background color" type="color" value={p.backgroundColor??'#22352b'} onChange={e=>update({backgroundColor:e.target.value})}/><span>{p.backgroundColor??'#22352b'}</span></div>}
+              {p.backgroundMode==='image'&&<div className="custom-background image-background"><button className="btn wide" onClick={()=>backgroundInput.current?.click()}><Upload size={14}/>{backgroundName?'Replace image':'Upload background'}</button><p>{backgroundName||'PNG, JPG or WebP · up to 20 MB'}</p><p>Centered and cropped to fill the canvas.</p>{backgroundName&&<button className="btn wide" onClick={()=>update({backgroundMode:'preset'})}>Use presets instead</button>}</div>}
               <div className="preset-grid">
                 {themes.map((t, i) => (
                   <button
@@ -846,14 +857,14 @@ export default function Home() {
                       background: `linear-gradient(140deg,${t.colors.join(',')})`,
                     }}
                     className={`preset ${p.theme === i ? 'selected' : ''}`}
-                    onClick={() => update({ theme: i })}
+                    onClick={() => update({ theme: i,backgroundMode:'preset' })}
                   >
                     <span className="preset-name">{t.name}</span>
                     {p.theme === i && <Check size={15} />}
                   </button>
                 ))}
               </div>
-              <div className="texture-card">
+              <div className="texture-card" hidden={p.backgroundMode==='color'||p.backgroundMode==='image'}>
                 <div className="texture-heading">
                   <span className="pixel-mark" aria-hidden="true" />
                   <label>Surface texture</label>
@@ -1516,7 +1527,7 @@ export default function Home() {
             <div>
               <b>{p.name}</b>
               <span>
-                {formatTime(total)} · {p.ratio} · 30 fps
+                {formatTime(total)} · {size(p.ratio,Number(quality)).join(' × ')} · {fps} fps
               </span>
             </div>
           </div>
@@ -1527,9 +1538,14 @@ export default function Home() {
             options={[
               ['720', '720p · Smaller file'],
               ['1080', '1080p · High quality'],
+              ['1440','1440p · QHD'],
+              ['2160','2160p · 4K'],
             ]}
             onChange={setQuality}
           />
+          <label>Frame rate</label><Choice label="Export frame rate" value={fps} options={[["24","24 fps · Cinematic"],["30","30 fps · Standard"],["60","60 fps · Smooth"]]} onChange={setFps}/>
+          <label>Encoding quality</label><Choice label="Encoding quality" value={encodingQuality} options={[["compact","Compact · Smaller file"],["high","High · Recommended"],["maximum","Maximum · Best detail"]]} onChange={setEncodingQuality}/>
+          <p className="panel-note">Target {(bitrate/1000000).toFixed(1)} Mbps · estimated {Math.round(bitrate*total/8/1000000)} MB. Higher settings cannot restore detail or frames missing from the source. Actual frame rate depends on your device.</p>
           <p className="panel-note">
             MP4 when your browser supports it; WebM otherwise. Export runs in
             real time. Keep this tab visible until it finishes.

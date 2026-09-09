@@ -1,4 +1,4 @@
-import { paintBackground, type Texture } from './background';
+import { paintBackground, paintImage, type Texture } from './background';
 export type Zoom = {
   id: string;
   start: number;
@@ -18,6 +18,8 @@ export type Project = {
   name: string;
   ratio: string;
   theme: number;
+  backgroundMode?: 'preset'|'color'|'image';
+  backgroundColor?: string;
   texture: Texture;
   textureStrength: number;
   pixelSize: number;
@@ -44,6 +46,8 @@ export const initialProject: Project = {
   name: 'My first demo',
   ratio: '16:9',
   theme: 0,
+  backgroundMode:'preset',
+  backgroundColor:'#22352b',
   texture: 'dither',
   textureStrength: 75,
   pixelSize: 3,
@@ -241,7 +245,8 @@ export function renderFrame(
     H = canvas.height;
   ctx.clearRect(0, 0, W, H);
   const theme = themes[p.theme] || themes[0];
-  paintBackground(
+  if(p.backgroundMode==='color') {ctx.fillStyle=p.backgroundColor||'#22352b';ctx.fillRect(0,0,W,H);}
+  else if(p.backgroundMode!=='image'||!paintImage(ctx,W,H))paintBackground(
     ctx,
     W,
     H,
@@ -418,6 +423,8 @@ export function validateProject(input: unknown): Project {
       c.duration <= 0
     )
       throw new Error('Invalid caption.');
+  if(p.backgroundMode!==undefined&&!['preset','color','image'].includes(p.backgroundMode))throw new Error('Invalid background mode.');
+  if(p.backgroundColor!==undefined&&!/^#[0-9a-f]{6}$/i.test(p.backgroundColor))throw new Error('Invalid background color.');
   const texture = p.texture ?? 'dither',
     textureStrength = p.textureStrength ?? 75,
     pixelSize = p.pixelSize ?? 3;

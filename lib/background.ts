@@ -1,4 +1,16 @@
 export type Texture = 'smooth' | 'dither' | 'grain';
+let customImage:ImageBitmap|null=null;
+export async function setBackgroundImage(file:Blob|null){
+  const next=file?await createImageBitmap(file):null;
+  customImage?.close();customImage=next;
+}
+export function paintImage(ctx:CanvasRenderingContext2D,w:number,h:number){
+  if(!customImage)return false;
+  const scale=Math.max(w/customImage.width,h/customImage.height);
+  const dw=customImage.width*scale,dh=customImage.height*scale;
+  ctx.save();ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
+  ctx.drawImage(customImage,(w-dw)/2,(h-dh)/2,dw,dh);ctx.restore();return true;
+}
 const bayer = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
 const rgb = (hex: string) =>
   [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));

@@ -2,6 +2,10 @@
 
 ## Visual polish
 
+Exports now offer 720p, 1080p, 1440p and 2160p, 24/30/60 fps, and compact/high/maximum bitrate targets scaled to resolution and frame rate. Actual output quality/frame delivery depends on source, browser encoder, display scheduling and device performance; no frame interpolation is implemented.
+
+Backgrounds support preset gradients, custom solid colors and PNG/JPG/WebP uploads (20 MB maximum). Images use centered cover cropping and are stored separately in IndexedDB; portable project JSON does not embed the background image. Reupload it on another device. Image cropping and bitmap cleanup have unit checks; live browser uploads and high-resolution exports still need hands-on verification.
+
 Ordered dither and grain backgrounds render through the same cached canvas path in preview and export. Texture intensity and pixel size are project settings; older project files migrate automatically. Run `node scripts/check-textures.mjs` for deterministic rendering and migration checks.
 
 GSAP handles the initial workspace entrance and brief pointer-initiated inspector changes. CSS handles press, hover, select, dialog, and toast feedback. Motion follows a shared easing system, skips keyboard-initiated panel transitions, and respects reduced-motion preferences. Paused previews redraw only when their contents change. Slider drags coalesce history entries.
