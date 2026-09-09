@@ -1,5 +1,11 @@
 # Take
 
+## Visual polish
+
+Ordered dither and grain backgrounds render through the same cached canvas path in preview and export. Texture intensity and pixel size are project settings; older project files migrate automatically. Run `node scripts/check-textures.mjs` for deterministic rendering and migration checks.
+
+GSAP handles the initial workspace entrance and brief pointer-initiated inspector changes. CSS handles press, hover, select, dialog, and toast feedback. Motion follows a shared easing system, skips keyboard-initiated panel transitions, and respects reduced-motion preferences. Paused previews redraw only when their contents change. Slider drags coalesce history entries.
+
 A browser-based demo video editor. Run `npm install`, then `npm run dev`.
 
 ## Implemented
