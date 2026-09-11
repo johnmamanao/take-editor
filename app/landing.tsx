@@ -189,9 +189,9 @@ function ScrollStory({ theme }: { theme: number }) {
     mm.add(
       {
         motion:
-          '(prefers-reduced-motion: no-preference) and (min-width: 760px) and (min-height: 640px)',
+          '(prefers-reduced-motion: no-preference) and (min-height: 640px)',
         static:
-          '(prefers-reduced-motion: reduce), (max-width: 759px), (max-height: 639px)',
+          '(prefers-reduced-motion: reduce), (max-height: 639px)',
       },
       (context) => {
         if (!root.current) return;
@@ -242,71 +242,74 @@ function ScrollStory({ theme }: { theme: number }) {
             className="take-story-field take-story-field-focus"
           />
         </div>
-        <div className="take-story-rail" aria-hidden="true">
-          <span ref={progress} />
-          <i ref={cursor} />
-        </div>
-        <div className="take-story-heading">
-          <span>ONE RECORDING · THREE EDITS</span>
-          <span>0{chapter + 1} / 03</span>
-        </div>
-        <div className="take-story-layout">
-          <div className="take-story-chapters">
-            {steps.map((item, index) => (
-              <article
-                key={item.title}
-                ref={(element) => {
-                  chapters.current[index] = element;
-                }}
-                data-active={chapter === index}
-              >
-                <span className="take-story-number">0{index + 1}</span>
-                <item.icon size={28} strokeWidth={1.5} aria-hidden="true" />
-                <h2>{item.title}</h2>
-                <p>{item.text}</p>
-              </article>
-            ))}
+        <div className="take-story-content">
+          <div className="take-story-rail" aria-hidden="true">
+            <span ref={progress} />
+            <i ref={cursor} />
           </div>
-          <div className="take-story-preview">
-            <div className="take-story-status">
-              <span>orbit-demo.mp4</span>
-              <span>
-                {chapter === 0 ? 'TRIM' : chapter === 1 ? 'FRAME' : 'FOCUS'}
-              </span>
+          <div className="take-story-heading">
+            <span>ONE RECORDING · THREE EDITS</span>
+            <span>0{chapter + 1} / 03</span>
+          </div>
+          <div className="take-story-layout">
+            <div className="take-story-chapters">
+              {steps.map((item, index) => (
+                <article
+                  key={item.title}
+                  ref={(element) => {
+                    chapters.current[index] = element;
+                  }}
+                  data-active={chapter === index}
+                >
+                  <span className="take-story-number">0{index + 1}</span>
+                  <item.icon size={28} strokeWidth={1.5} aria-hidden="true" />
+                  <h2>{item.title}</h2>
+                  <p>{item.text}</p>
+                </article>
+              ))}
             </div>
-            <div ref={previewFrame} className="take-story-frame">
-              <span className="take-story-corner take-story-corner-a" />
-              <span className="take-story-corner take-story-corner-b" />
-              <canvas
-                ref={canvas}
-                width={1120}
-                height={700}
-                role="img"
-                aria-label={`Editing demonstration: ${steps[chapter].title}`}
-              />
-              <div
-                ref={focusRing}
-                className="take-story-focus"
-                aria-hidden="true"
-              >
-                <Focus size={22} />
+            <div className="take-story-preview">
+              <div className="take-story-status">
+                <span>orbit-demo.mp4</span>
+                <span>
+                  {chapter === 0 ? 'TRIM' : chapter === 1 ? 'FRAME' : 'FOCUS'}
+                </span>
               </div>
-            </div>
-            <div
-              className="take-story-timeline"
-              aria-label="Trim the first and last three seconds"
-            >
-              <span>00:00</span>
-              <div className="take-story-track">
-                <div ref={trim} className="take-story-selection">
-                  <i />
-                  <span>orbit-demo</span>
-                  <i />
+              <div ref={previewFrame} className="take-story-frame">
+                <span className="take-story-corner take-story-corner-a" />
+                <span className="take-story-corner take-story-corner-b" />
+                <canvas
+                  ref={canvas}
+                  width={1120}
+                  height={700}
+                  role="img"
+                  aria-label={`Editing demonstration: ${steps[chapter].title}`}
+                />
+                <div
+                  ref={focusRing}
+                  className="take-story-focus"
+                  aria-hidden="true"
+                >
+                  <Focus size={22} />
                 </div>
               </div>
-              <span>00:24</span>
+              <div
+                className="take-story-timeline"
+                aria-label="Trim the first and last three seconds"
+              >
+                <span>00:00</span>
+                <div className="take-story-track">
+                  <div ref={trim} className="take-story-selection">
+                    <i />
+                    <span>orbit-demo</span>
+                    <i />
+                  </div>
+                </div>
+                <span>00:24</span>
+              </div>
             </div>
           </div>
+          <p className="take-story-hint">Scroll to direct the edit</p>
         </div>
         <div className="take-story-words" aria-hidden="true">
           {['CUT', 'FRAME', 'FOCUS'].map((word, index) => (
@@ -320,18 +323,42 @@ function ScrollStory({ theme }: { theme: number }) {
             </span>
           ))}
         </div>
-        <p className="take-story-hint">Scroll to direct the edit</p>
       </div>
     </section>
   );
 }
 export default function Landing() {
+  const [starCount, setStarCount] = useState<number | null>(null);
+  const [starsLoaded, setStarsLoaded] = useState(false);
   const landingRoot = useRef<HTMLElement>(null);
   const heroRoot = useRef<HTMLElement>(null);
   const demoRoot = useRef<HTMLElement>(null);
   const bridgeRoot = useRef<HTMLElement>(null);
   const exportsRoot = useRef<HTMLElement>(null);
   const finaleRoot = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch('https://api.github.com/repos/johnmamanao/take-editor', {
+      headers: { Accept: 'application/vnd.github+json' },
+      signal: controller.signal,
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error('GitHub star count unavailable');
+        return response.json() as Promise<{ stargazers_count?: number }>;
+      })
+      .then((repository) => {
+        if (Number.isFinite(repository.stargazers_count)) {
+          setStarCount(repository.stargazers_count ?? null);
+        }
+      })
+      .catch((error: unknown) => {
+        if (!(error instanceof DOMException && error.name === 'AbortError')) {
+          setStarCount(null);
+        }
+      })
+      .finally(() => setStarsLoaded(true));
+    return () => controller.abort();
+  }, []);
   useEffect(() => {
     if (!location.hash) return;
     const timer = window.setTimeout(() => {
@@ -468,7 +495,7 @@ export default function Landing() {
           );
         }
       }
-      if (bridgeRoot.current && cinematic) {
+      if (bridgeRoot.current) {
         const bridgeWords = bridgeRoot.current.querySelectorAll(
           '.take-bridge-line > span',
         );
@@ -477,31 +504,40 @@ export default function Landing() {
         const bridge = gsap.timeline({
           scrollTrigger: {
             trigger: bridgeRoot.current,
-            start: 'top top',
-            end: 'bottom bottom',
-            scrub: 0.35,
+            start: cinematic ? 'top top' : 'top 82%',
+            end: cinematic ? 'bottom bottom' : undefined,
+            scrub: cinematic ? 0.35 : false,
+            once: !cinematic,
           },
         });
         bridge
           .fromTo(
             bridgeWords,
-            { transform: 'translate3d(0,112%,0)' },
+            { transform: `translate3d(0,${cinematic ? 112 : 104}%,0)` },
             {
               transform: 'translate3d(0,0%,0)',
               stagger: 0.16,
-              duration: 1,
+              duration: cinematic ? 1 : 0.72,
               ease: 'take-in-out',
             },
           )
           .fromTo(
             bridgeMark,
-            { transform: 'translate3d(-20vw,0,0) scale(.92)' },
             {
-              transform: 'translate3d(20vw,0,0) scale(1)',
-              duration: 1.4,
-              ease: 'take-in-out',
+              transform: cinematic
+                ? 'translate3d(-20vw,0,0) scale(.92)'
+                : 'translate3d(0,18px,0) scale(.92)',
+              opacity: cinematic ? 1 : 0,
             },
-            0.3,
+            {
+              transform: cinematic
+                ? 'translate3d(20vw,0,0) scale(1)'
+                : 'translate3d(0,0,0) scale(1)',
+              opacity: 1,
+              duration: cinematic ? 1.4 : 0.6,
+              ease: cinematic ? 'take-in-out' : 'take-out',
+            },
+            cinematic ? 0.3 : 0.22,
           );
       }
 
@@ -509,9 +545,10 @@ export default function Landing() {
         const finale = gsap.timeline({
           scrollTrigger: {
             trigger: finaleRoot.current,
-            start: 'top 88%',
-            end: 'center center',
-            scrub: 0.35,
+            start: cinematic ? 'top 88%' : 'top 82%',
+            end: cinematic ? 'center center' : undefined,
+            scrub: cinematic ? 0.35 : false,
+            once: !cinematic,
           },
         });
         finale
@@ -555,8 +592,42 @@ export default function Landing() {
       const desktop = matchMedia(
         '(min-width: 900px) and (min-height: 760px)',
       ).matches;
+      if (!desktop) {
+        const reveal = gsap.timeline({
+          scrollTrigger: {
+            trigger: root,
+            start: 'top 82%',
+            once: true,
+          },
+        });
+        reveal
+          .fromTo(
+            root.querySelectorAll('.take-output-copy > *'),
+            { transform: 'translate3d(0,24px,0)', opacity: 0 },
+            {
+              transform: 'translate3d(0,0,0)',
+              opacity: 1,
+              stagger: 0.06,
+              duration: 0.6,
+              ease: 'take-out',
+            },
+          )
+          .fromTo(
+            cards,
+            { transform: 'translate3d(0,24px,0) scale(.97)', opacity: 0 },
+            {
+              transform: 'translate3d(0,0,0) scale(1)',
+              opacity: 1,
+              stagger: 0.08,
+              duration: 0.6,
+              ease: 'take-out',
+            },
+            0.18,
+          );
+        return;
+      }
       // Keep the copy stationary while each output gets a separate scroll beat.
-      if (desktop) root.setAttribute('data-pinned', 'true');
+      root.setAttribute('data-pinned', 'true');
       const timeline = gsap.timeline({
         scrollTrigger: {
           trigger: root,
@@ -760,9 +831,42 @@ export default function Landing() {
           <a href="#how-it-works">How it works</a>
           <a href="#exports">Export details</a>
         </div>
-        <a className="take-nav-open" href="/editor">
-          Open editor <ArrowUpRight size={16} />
-        </a>
+        <div className="take-nav-actions">
+          <a
+            className="take-nav-github"
+            href="https://github.com/johnmamanao/take-editor"
+            target="_blank"
+            rel="noreferrer"
+            aria-label={
+              starCount === null
+                ? 'Star Take on GitHub'
+                : `Star Take on GitHub, ${starCount.toLocaleString('en-US')} stars`
+            }
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path
+                fill="currentColor"
+                d="M12 .7a11.3 11.3 0 0 0-3.6 22c.6.1.8-.2.8-.5v-2c-3.3.7-4-1.4-4-1.4-.5-1.4-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.6.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.6 3.3-1.2 3.3-1.2.6 1.6.2 2.9.1 3.2.8.9 1.2 2 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.5A11.3 11.3 0 0 0 12 .7Z"
+              />
+            </svg>
+            <span className="take-nav-github-label">Star</span>
+            <span className="take-nav-github-count" aria-live="polite">
+              {starCount === null
+                ? starsLoaded
+                  ? '–'
+                  : '…'
+                : starCount.toLocaleString('en-US')}
+            </span>
+          </a>
+          <a className="take-nav-open" href="/editor">
+            Open editor <ArrowUpRight size={16} />
+          </a>
+        </div>
       </nav>
       <header ref={heroRoot} className="take-hero">
         <p className="take-intro">
