@@ -30,12 +30,6 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). To use another port:
-
-```bash
-npm run dev -- --port 3100
-```
-
 ## Production build
 
 ```bash
