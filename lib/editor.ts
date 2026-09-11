@@ -1,4 +1,12 @@
-import { paintBackground, paintImage, type Texture } from './background';
+import {
+  paintBackground,
+  paintImage,
+  paintPresetImage,
+  asciiCharacterSets,
+  type AsciiCharacters,
+  type Texture,
+} from './background';
+import { frameLayout, drawFrameChrome, type FrameSettings } from './frames';
 export type Zoom = {
   id: string;
   start: number;
@@ -14,18 +22,22 @@ export type Caption = {
   text: string;
 };
 export type Clip = { id: string; start: number; end: number };
-export type Project = {
+export type Project = FrameSettings & {
   name: string;
   ratio: string;
   theme: number;
-  backgroundMode?: 'preset'|'color'|'image';
+  backgroundMode?: 'preset' | 'color' | 'image';
   backgroundColor?: string;
   texture: Texture;
   textureStrength: number;
   pixelSize: number;
+  backgroundCharacters?: AsciiCharacters;
+  mediaStyle?: 'original' | 'ascii';
+  asciiSize?: number;
   padding: number;
   radius: number;
   shadow: number;
+  backgroundBlur?: number;
   speed: number;
   muted: boolean;
   cursor: boolean;
@@ -34,33 +46,59 @@ export type Project = {
   captions: Caption[];
   clips: Clip[];
 };
-export const themes = [
-  { name: 'Meadow', colors: ['#89b69f', '#e4e9c0'] },
-  { name: 'Iris', colors: ['#958bd4', '#e3cbee'] },
-  { name: 'Sand', colors: ['#d7b69c', '#f3e6cf'] },
-  { name: 'Glacier', colors: ['#688cab', '#cddfe8'] },
-  { name: 'Sunset', colors: ['#ca7c85', '#f8bb87'] },
-  { name: 'Midnight', colors: ['#343a43', '#11151b'] },
+export const themes: {
+  name: string;
+  colors: string[];
+  image?: string;
+}[] = [
+  {
+    name: 'Violet Silk',
+    colors: ['#2a0b50', '#a76df0'],
+    image: '/backgrounds/violet-silk.png',
+  },
+  {
+    name: 'Cobalt Glass',
+    colors: ['#09295f', '#7ac5ff'],
+    image: '/backgrounds/cobalt-glass.png',
+  },
+  {
+    name: 'Amber Dunes',
+    colors: ['#7d3e20', '#efb574'],
+    image: '/backgrounds/amber-dunes.png',
+  },
+  {
+    name: 'Carbon Mesh',
+    colors: ['#101412', '#9dbb3f'],
+    image: '/backgrounds/carbon-mesh.png',
+  },
+  {
+    name: 'Ivory Paper',
+    colors: ['#c9bca7', '#f4efe4'],
+    image: '/backgrounds/ivory-paper.png',
+  },
 ];
 export const initialProject: Project = {
   name: 'My first demo',
   ratio: '16:9',
   theme: 0,
-  backgroundMode:'preset',
-  backgroundColor:'#22352b',
-  texture: 'dither',
+  backgroundMode: 'preset',
+  backgroundColor: '#22352b',
+  texture: 'smooth',
   textureStrength: 75,
   pixelSize: 3,
+  mediaStyle: 'original',
+  asciiSize: 10,
   padding: 64,
   radius: 12,
   shadow: 40,
+  backgroundBlur: 0,
   speed: 1,
   muted: false,
   cursor: true,
   cursorSize: 25,
   zooms: [
-    { id: 'z1', start: 3, duration: 5, scale: 1.55, x: 0.53, y: 0.56 },
-    { id: 'z2', start: 14, duration: 5, scale: 1.8, x: 0.79, y: 0.63 },
+    { id: 'z1', start: 3, duration: 4, scale: 1.28, x: 0.53, y: 0.56 },
+    { id: 'z2', start: 14, duration: 4, scale: 1.35, x: 0.79, y: 0.63 },
   ],
   captions: [],
   clips: [{ id: 'c1', start: 0, end: 24 }],
@@ -92,16 +130,16 @@ export function camera(p: Project, t: number) {
     y = 0.5;
   const z = p.zooms.find((z) => t >= z.start && t <= z.start + z.duration);
   if (z) {
-    const edge = Math.min(0.65, z.duration / 3);
+    const edge = Math.min(0.9, z.duration / 2.5);
     const u = clamp(
       Math.min((t - z.start) / edge, (z.start + z.duration - t) / edge),
       0,
       1,
     );
-    const ease = u * u * (3 - 2 * u);
+    const ease = 1 - Math.pow(1 - u, 5);
     scale = 1 + (z.scale - 1) * ease;
-    x = z.x;
-    y = z.y;
+    x = 0.5 + (z.x - 0.5) * ease;
+    y = 0.5 + (z.y - 0.5) * ease;
   }
   return { scale, x, y };
 }
@@ -232,7 +270,99 @@ export function drawSample(ctx: CanvasRenderingContext2D, t: number) {
     );
   }
 }
+// Source-space waypoints include dwell time. The opening and closing holds
+// match both the full sample and the landing page's 3–21 second trimmed loop.
+const cursorStops = [
+  { arrive: 0, leave: 3.4, x: 315, y: 254 },
+  { arrive: 4.05, leave: 6.5, x: 408, y: 520 },
+  { arrive: 7.15, leave: 10.8, x: 730, y: 521 },
+  { arrive: 11.45, leave: 15.2, x: 1060, y: 522 },
+  { arrive: 16.05, leave: 18.8, x: 550, y: 255 },
+  { arrive: 19.4, leave: 24, x: 315, y: 254 },
+];
+export function sampleCursor(t: number) {
+  const time = ((t % 24) + 24) % 24;
+  for (let i = 0; i < cursorStops.length - 1; i++) {
+    const from = cursorStops[i],
+      to = cursorStops[i + 1];
+    if (time <= from.leave) return { x: from.x / 1280, y: from.y / 800 };
+    if (time < to.arrive) {
+      const u = (time - from.leave) / (to.arrive - from.leave);
+      // Cubic ease-out: decisive travel, then a small settling movement.
+      const p = 1 - Math.pow(1 - u, 3);
+      const dx = to.x - from.x,
+        dy = to.y - from.y;
+      const length = Math.hypot(dx, dy);
+      const bend = Math.min(18, length * 0.04) * (i % 2 ? -1 : 1);
+      const arc = 4 * p * (1 - p) * bend;
+      return {
+        x: (from.x + dx * p - (dy / length) * arc) / 1280,
+        y: (from.y + dy * p + (dx / length) * arc) / 800,
+      };
+    }
+  }
+  return { x: cursorStops[0].x / 1280, y: cursorStops[0].y / 800 };
+}
 let sample: HTMLCanvasElement | undefined;
+let asciiSampler: HTMLCanvasElement | undefined;
+let backgroundLayer: HTMLCanvasElement | undefined;
+let heldVideoFrame: HTMLCanvasElement | undefined;
+let heldVideoSource = '';
+
+function layer(width: number, height: number) {
+  if (!backgroundLayer) backgroundLayer = document.createElement('canvas');
+  if (backgroundLayer.width !== width || backgroundLayer.height !== height) {
+    backgroundLayer.width = width;
+    backgroundLayer.height = height;
+  }
+  return backgroundLayer;
+}
+
+function drawAsciiMedia(
+  ctx: CanvasRenderingContext2D,
+  source: CanvasImageSource,
+  w: number,
+  h: number,
+  outputWidth: number,
+  size: number,
+) {
+  const cell = Math.max(7, (size / 1080) * outputWidth);
+  const columns = Math.max(24, Math.ceil(w / cell));
+  const rows = Math.max(14, Math.ceil(h / (cell * 1.35)));
+  if (!asciiSampler) asciiSampler = document.createElement('canvas');
+  asciiSampler.width = columns;
+  asciiSampler.height = rows;
+  const sampler = asciiSampler.getContext('2d', { willReadFrequently: true })!;
+  sampler.imageSmoothingEnabled = true;
+  sampler.drawImage(source, 0, 0, columns, rows);
+  const pixels = sampler.getImageData(0, 0, columns, rows).data;
+  const cellW = w / columns;
+  const cellH = h / rows;
+  const glyphs = ' .:-=+*#%@';
+
+  ctx.fillStyle = '#121411';
+  ctx.fillRect(0, 0, w, h);
+  ctx.font = `${Math.ceil(cellH * 0.9)}px ui-monospace, SFMono-Regular, Consolas, monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (let row = 0; row < rows; row++) {
+    for (let column = 0; column < columns; column++) {
+      const index = (row * columns + column) * 4;
+      const red = pixels[index];
+      const green = pixels[index + 1];
+      const blue = pixels[index + 2];
+      const light = red * 0.2126 + green * 0.7152 + blue * 0.0722;
+      const glyph =
+        glyphs[
+          Math.min(glyphs.length - 1, Math.floor((light / 256) * glyphs.length))
+        ];
+      if (glyph === ' ') continue;
+      ctx.fillStyle = `rgb(${Math.min(255, red + 24)},${Math.min(255, green + 24)},${Math.min(255, blue + 24)})`;
+      ctx.fillText(glyph, (column + 0.5) * cellW, (row + 0.52) * cellH);
+    }
+  }
+}
+
 export function renderFrame(
   canvas: HTMLCanvasElement,
   p: Project,
@@ -245,16 +375,69 @@ export function renderFrame(
     H = canvas.height;
   ctx.clearRect(0, 0, W, H);
   const theme = themes[p.theme] || themes[0];
-  if(p.backgroundMode==='color') {ctx.fillStyle=p.backgroundColor||'#22352b';ctx.fillRect(0,0,W,H);}
-  else if(p.backgroundMode!=='image'||!paintImage(ctx,W,H))paintBackground(
-    ctx,
-    W,
-    H,
-    theme.colors,
-    p.texture ?? 'dither',
-    p.textureStrength ?? 75,
-    p.pixelSize ?? 3,
-  );
+  const backgroundBlur = p.backgroundBlur ?? 0;
+  const needsBackgroundLayer = backgroundBlur > 0;
+  const backgroundCanvas = needsBackgroundLayer ? layer(W, H) : canvas;
+  const backgroundContext = backgroundCanvas.getContext('2d')!;
+  if (needsBackgroundLayer) backgroundContext.clearRect(0, 0, W, H);
+  if (
+    p.backgroundMode === 'preset' &&
+    theme.image &&
+    paintPresetImage(
+      backgroundContext,
+      W,
+      H,
+      theme.image,
+      p.texture === 'ascii',
+      p.textureStrength,
+      p.pixelSize,
+      p.backgroundCharacters,
+    )
+  ) {
+    // The bundled image is ready and has been painted.
+  } else if (p.backgroundMode === 'color') {
+    backgroundContext.fillStyle = p.backgroundColor || '#22352b';
+    backgroundContext.fillRect(0, 0, W, H);
+  } else if (
+    p.backgroundMode !== 'image' ||
+    !paintImage(
+      backgroundContext,
+      W,
+      H,
+      p.texture === 'ascii',
+      p.textureStrength,
+      p.pixelSize,
+      p.backgroundCharacters,
+    )
+  )
+    paintBackground(
+      backgroundContext,
+      W,
+      H,
+      theme.colors,
+      p.texture ?? 'dither',
+      p.textureStrength ?? 75,
+      p.pixelSize ?? 3,
+      p.backgroundCharacters,
+    );
+  if (needsBackgroundLayer) {
+    ctx.save();
+    if (backgroundBlur > 0) {
+      const blur = (backgroundBlur / 1080) * W;
+      const overscan = Math.ceil(blur * 2.5);
+      ctx.filter = `blur(${blur}px)`;
+      ctx.drawImage(
+        backgroundCanvas,
+        -overscan,
+        -overscan,
+        W + overscan * 2,
+        H + overscan * 2,
+      );
+    } else {
+      ctx.drawImage(backgroundCanvas, 0, 0);
+    }
+    ctx.restore();
+  }
   if (!sample) {
     sample = document.createElement('canvas');
     sample.width = 1280;
@@ -262,37 +445,87 @@ export function renderFrame(
   }
   const sw = video?.videoWidth || 1280,
     sh = video?.videoHeight || 800;
-  const pad = (p.padding / 1080) * Math.min(W, H);
-  const fit = Math.min((W - 2 * pad) / sw, (H - 2 * pad) / sh);
-  const w = sw * fit,
-    h = sh * fit,
-    x = (W - w) / 2,
-    y = (H - h) / 2;
+  const {
+    w,
+    h,
+    x,
+    y,
+    contentX,
+    contentY,
+    header,
+    side,
+    bottom,
+    outerWidth,
+    outerHeight,
+  } = frameLayout(W, H, sw, sh, p.padding, p.frameStyle);
   const cam = camera(p, t);
   const r = (p.radius / 1080) * Math.min(W, H);
   ctx.save();
   ctx.shadowColor = '#12241c66';
   ctx.shadowBlur = (p.shadow / 1080) * W;
   ctx.shadowOffsetY = (p.shadow / 2160) * W;
-  round(ctx, x, y, w, h, r, '#fafbf8');
+  round(ctx, x, y, outerWidth, outerHeight, r, '#fafbf8');
   ctx.restore();
   ctx.save();
   ctx.beginPath();
-  ctx.roundRect(x, y, w, h, r);
+  ctx.roundRect(x, y, outerWidth, outerHeight, r);
   ctx.clip();
-  ctx.translate(x, y);
+  ctx.beginPath();
+  ctx.rect(contentX, contentY, w, h);
+  ctx.clip();
+  ctx.translate(contentX, contentY);
   const tx = clamp(w / 2 - cam.x * w * cam.scale, w - w * cam.scale, 0),
     ty = clamp(h / 2 - cam.y * h * cam.scale, h - h * cam.scale, 0);
   ctx.translate(tx, ty);
   ctx.scale(cam.scale, cam.scale);
-  if (video && video.readyState >= 2) {
-    ctx.drawImage(video, 0, 0, w, h);
+  const hasImportedVideo = !!video;
+  let source: CanvasImageSource | null = null;
+  if (hasImportedVideo) {
+    const sourceKey = video.currentSrc || video.src;
+    if (sourceKey !== heldVideoSource) {
+      heldVideoFrame = undefined;
+      heldVideoSource = sourceKey;
+    }
+    if (video.readyState >= 2) {
+      if (!heldVideoFrame) heldVideoFrame = document.createElement('canvas');
+      if (heldVideoFrame.width !== Math.ceil(w))
+        heldVideoFrame.width = Math.ceil(w);
+      if (heldVideoFrame.height !== Math.ceil(h))
+        heldVideoFrame.height = Math.ceil(h);
+      const held = heldVideoFrame.getContext('2d')!;
+      held.imageSmoothingEnabled = true;
+      held.imageSmoothingQuality = 'high';
+      try {
+        held.drawImage(
+          video,
+          0,
+          0,
+          heldVideoFrame.width,
+          heldVideoFrame.height,
+        );
+      } catch {
+        // Some browsers report a ready frame just before a seek invalidates it.
+        // Keep the last successfully decoded frame instead of flashing the demo.
+      }
+    }
+    if (heldVideoFrame?.width && heldVideoFrame.height) source = heldVideoFrame;
   } else {
     drawSample(sample.getContext('2d')!, t);
-    ctx.drawImage(sample, 0, 0, w, h);
+    source = sample;
+  }
+  if (!source) {
+    ctx.fillStyle = '#151815';
+    ctx.fillRect(0, 0, w, h);
+  } else if ((p.mediaStyle ?? 'original') === 'ascii') {
+    drawAsciiMedia(ctx, source, w, h, W, p.asciiSize ?? 10);
+  } else {
+    ctx.drawImage(source, 0, 0, w, h);
+  }
+  if (!hasImportedVideo) {
     if (p.cursor) {
-      const px = (0.39 + 0.3 * (0.5 + 0.5 * Math.sin(t * 0.38))) * w,
-        py = (0.45 + 0.19 * (0.5 + 0.5 * Math.cos(t * 0.52))) * h;
+      const cursor = sampleCursor(t);
+      const px = cursor.x * w,
+        py = cursor.y * h;
       const s = (p.cursorSize / 1080) * W;
       ctx.save();
       ctx.translate(px, py);
@@ -311,6 +544,7 @@ export function renderFrame(
     }
   }
   ctx.restore();
+  drawFrameChrome(ctx, p, x, y, w, h, header, side, bottom, r);
   const caption = p.captions.find(
     (c) => t >= c.start && t < c.start + c.duration,
   );
@@ -371,13 +605,15 @@ export function validateProject(input: unknown): Project {
     'padding',
     'radius',
     'shadow',
+    'backgroundBlur',
     'speed',
     'cursorSize',
   ] as const)
-    if (!Number.isFinite(p[key])) throw new Error('Invalid project settings.');
+    if (p[key] !== undefined && !Number.isFinite(p[key]))
+      throw new Error('Invalid project settings.');
+  const theme = Math.min(p.theme, themes.length - 1);
   if (
     p.theme < 0 ||
-    p.theme >= themes.length ||
     !Number.isInteger(p.theme) ||
     p.padding < 0 ||
     p.padding > 200 ||
@@ -385,6 +621,8 @@ export function validateProject(input: unknown): Project {
     p.radius > 60 ||
     p.shadow < 0 ||
     p.shadow > 100 ||
+    (p.backgroundBlur !== undefined &&
+      (p.backgroundBlur < 0 || p.backgroundBlur > 30)) ||
     p.speed < 0.25 ||
     p.speed > 4
   )
@@ -423,26 +661,70 @@ export function validateProject(input: unknown): Project {
       c.duration <= 0
     )
       throw new Error('Invalid caption.');
-  if(p.backgroundMode!==undefined&&!['preset','color','image'].includes(p.backgroundMode))throw new Error('Invalid background mode.');
-  if(p.backgroundColor!==undefined&&!/^#[0-9a-f]{6}$/i.test(p.backgroundColor))throw new Error('Invalid background color.');
+  if (
+    p.backgroundMode !== undefined &&
+    !['preset', 'color', 'image'].includes(p.backgroundMode)
+  )
+    throw new Error('Invalid background mode.');
+  if (
+    p.backgroundColor !== undefined &&
+    !/^#[0-9a-f]{6}$/i.test(p.backgroundColor)
+  )
+    throw new Error('Invalid background color.');
+  const frameStyle =
+    (p.frameStyle as string) === 'phone' ? 'clean' : p.frameStyle;
+  if (
+    (frameStyle !== undefined &&
+      !['clean', 'browser', 'desktop'].includes(frameStyle)) ||
+    (p.frameTone !== undefined && !['light', 'dark'].includes(p.frameTone)) ||
+    (p.windowControls !== undefined &&
+      !['mac', 'windows'].includes(p.windowControls)) ||
+    (p.frameTitle !== undefined &&
+      (typeof p.frameTitle !== 'string' || p.frameTitle.length > 120))
+  )
+    throw new Error('Invalid frame settings.');
+  if (
+    p.backgroundCharacters !== undefined &&
+    !Object.hasOwn(asciiCharacterSets, p.backgroundCharacters)
+  )
+    throw new Error('Invalid ASCII character style.');
   const texture = p.texture ?? 'dither',
     textureStrength = p.textureStrength ?? 75,
-    pixelSize = p.pixelSize ?? 3;
+    pixelSize = p.pixelSize ?? 3,
+    mediaStyle = p.mediaStyle ?? 'original',
+    asciiSize = p.asciiSize ?? 10;
   if (
-    !['smooth', 'dither', 'grain'].includes(texture) ||
+    !['smooth', 'dither', 'grain', 'ascii'].includes(texture) ||
     !Number.isFinite(textureStrength) ||
     textureStrength < 0 ||
     textureStrength > 100 ||
     !Number.isFinite(pixelSize) ||
     pixelSize < 1 ||
-    pixelSize > 8
+    pixelSize > 8 ||
+    !['original', 'ascii'].includes(mediaStyle) ||
+    !Number.isFinite(asciiSize) ||
+    asciiSize < 6 ||
+    asciiSize > 18
   )
     throw new Error('Invalid texture settings.');
+  const {
+    frameEffect: _legacyFrameEffect,
+    effectStrength: _legacyEffectStrength,
+    ...project
+  } = p as Project & {
+    frameEffect?: unknown;
+    effectStrength?: unknown;
+  };
   return {
-    ...p,
+    ...project,
+    theme,
+    frameStyle,
+    backgroundBlur: p.backgroundBlur ?? 0,
     texture,
     textureStrength,
     pixelSize,
+    mediaStyle,
+    asciiSize,
     muted: !!p.muted,
     cursor: !!p.cursor,
   };

@@ -1,32 +1,62 @@
 # Take
 
-## Visual polish
+Turn a raw screen recording into a polished product demo, directly in your browser.
 
-Exports now offer 720p, 1080p, 1440p and 2160p, 24/30/60 fps, and compact/high/maximum bitrate targets scaled to resolution and frame rate. Actual output quality/frame delivery depends on source, browser encoder, display scheduling and device performance; no frame interpolation is implemented.
+Take is a local-first video editor built for product walkthroughs, launch clips, and social posts. Import a recording, frame it with a designed background, guide attention with smooth zooms and callouts, then export the finished video without uploading the source file.
 
-Backgrounds support preset gradients, custom solid colors and PNG/JPG/WebP uploads (20 MB maximum). Images use centered cover cropping and are stored separately in IndexedDB; portable project JSON does not embed the background image. Reupload it on another device. Image cropping and bitmap cleanup have unit checks; live browser uploads and high-resolution exports still need hands-on verification.
+## What it can do
 
-Ordered dither and grain backgrounds render through the same cached canvas path in preview and export. Texture intensity and pixel size are project settings; older project files migrate automatically. Run `node scripts/check-textures.mjs` for deterministic rendering and migration checks.
+- Import, preview, scrub, trim, split, and remove video clips
+- Add smooth zooms, timed text callouts, and cursor treatments
+- Detect areas of activity and create suggested focus moments
+- Style the canvas with image backgrounds, colors, mockup frames, shadows, and spacing
+- Apply dither and ASCII-inspired textures to the background without changing the recording
+- Reposition and resize editing events directly on the timeline
+- Preview in fullscreen and collapse the inspector for more working space
+- Export at 720p, 1080p, 1440p, or 4K and 24, 30, or 60 fps
+- Autosave projects and source video locally with IndexedDB
+- Import and export portable project JSON files
 
-GSAP handles the initial workspace entrance and brief pointer-initiated inspector changes. CSS handles press, hover, select, dialog, and toast feedback. Motion follows a shared easing system, skips keyboard-initiated panel transitions, and respects reduced-motion preferences. Paused previews redraw only when their contents change. Slider drags coalesce history entries.
+## Local first
 
-A browser-based demo video editor. Run `npm install`, then `npm run dev`.
+Your recording stays on your device. Editing and rendering happen in the browser, with no account or upload queue required.
 
-## Implemented
+## Run locally
 
-- Local video import, preview, playback, and scrubbing
-- Background presets, aspect ratios, padding, corner radius, and shadow
-- Editable zoom events with smooth entry/exit
-- Timed text callouts
-- Clip splitting, removal, trimming, and playback speed
-- Undo/redo; project JSON import/export
-- Device-local project autosave and video storage in IndexedDB
-- Real-time canvas export with original audio, MP4 where supported and WebM fallback
+Requirements: Node.js 22.13 or newer.
 
-The synthetic Orbit sample works without an uploaded file. Imported recordings retain their baked-in cursor. Cursor reconstruction, automated click capture, captions from speech, and a native recorder are not implemented.
+```bash
+npm install
+npm run dev
+```
 
-## Validation
+Open [http://localhost:3000](http://localhost:3000). To use another port:
 
-TypeScript and production build pass. Pure editing calculations checked for clip/speed mapping, output dimensions, camera easing, and invalid project inputs. Local route responds successfully. Browser interaction and a real exported-video playback have not been manually verified. Optional WebMCP registration is feature-detected; no compatible verification context was available.
+```bash
+npm run dev -- --port 3100
+```
 
-Browser exports run in real time and require this tab to remain visible. Source videos and autosaved projects stay in this browser. Download a project file for a portable edit; it does not embed the source recording.
+## Production build
+
+```bash
+npm run build
+npm run start
+```
+
+## Browser support
+
+Chrome and Edge provide the best experience. Export format and encoding support depend on the browser. Take uses MP4 when supported and falls back to WebM.
+
+Exports render in real time. Keep the tab visible until the export finishes. Output frame delivery and quality depend on the source recording, browser encoder, and device performance.
+
+## Built with
+
+- React 19 and TypeScript
+- Vinext and Vite
+- GSAP
+- Canvas and MediaRecorder APIs
+- IndexedDB
+
+## Current scope
+
+Take includes a synthetic sample project so the editor can be explored before importing a recording. Imported recordings keep any cursor already captured in the source. Native screen recording, speech-to-caption transcription, and reconstructed click events are not included yet.

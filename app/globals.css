@@ -2,6 +2,7 @@
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
 @import './polish.css';
+@import './editor-theme.css';
 @custom-variant dark (&:is(.dark *));
 .editor-tabs {
   display: flex !important;
@@ -226,12 +227,18 @@
   font-size: 11px;
   white-space: nowrap;
   overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.event-track button:active {
+  cursor: grabbing;
 }
 .event-track button.event-selected {
   border-color: #a2c980;
   background: #3c4d30;
 }
-.event-track button span {
+.event-track button .event-value {
   margin-left: auto;
   color: #90a87c;
 }
@@ -1040,7 +1047,7 @@ button:hover:not(:disabled) {
   border-top: 5px solid #a2b697;
   border-radius: 1px;
 }
-.video-track > span {
+.video-track > .clip-title {
   position: absolute;
   left: 12px;
   top: 12px;

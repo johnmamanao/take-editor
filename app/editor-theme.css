@@ -1,0 +1,339 @@
+/* Take Studio uses the landing brand language inside a focused dark workspace. */
+html body .studio {
+  --editor-paper: #1d1e1b;
+  --editor-ink: #f1f1eb;
+  --editor-muted: #999b93;
+  --editor-line: #343630;
+  --editor-accent: #c9df70;
+  --editor-accent-dark: #c9df70;
+  color: var(--editor-ink);
+  background: #151613;
+  color-scheme: dark;
+}
+
+html body .topbar {
+  color: var(--editor-ink);
+  background: #1d1e1b;
+  border-color: var(--editor-line);
+}
+
+html body .brand,
+html body .project-name input {
+  color: var(--editor-ink);
+}
+
+.editor-brand-mark {
+  width: 25px;
+  height: 25px;
+  color: var(--editor-accent);
+  transform: none;
+  flex: 0 0 auto;
+}
+
+html body .project-name,
+html body .saved {
+  color: #9a9c94;
+}
+
+html body .project-name > span {
+  color: #686a64;
+}
+
+html body .saved svg {
+  color: var(--editor-accent);
+}
+
+html body .topbar .btn,
+html body .inspector .btn {
+  color: #e7e8e1;
+  background: #292a26;
+  border-color: #41433c;
+  box-shadow: inset 0 1px 0 #ffffff08;
+}
+
+html body .topbar .btn.primary,
+html body .export-dialog .btn.primary {
+  color: #202316;
+  background: var(--editor-accent);
+  border-color: var(--editor-accent);
+  box-shadow: 0 2px 8px #0005;
+}
+
+html body .editor-tabs .tool-rail {
+  color: #9a9c94;
+  background: #191a17 !important;
+  border-color: #30322c !important;
+}
+
+html body .editor-tabs .rail-item {
+  color: #94968e !important;
+}
+
+html body .editor-tabs .rail-item[data-active] {
+  color: #eef2db !important;
+  background: #c9df7014 !important;
+}
+
+html body .editor-tabs .rail-item[data-active]:before {
+  background: var(--editor-accent);
+}
+
+html body .rail-bottom {
+  color: #83867d;
+}
+
+html body .inspector {
+  color: var(--editor-ink);
+  background: #20211e;
+  border-color: var(--editor-line);
+  scrollbar-color: #4c4f46 transparent;
+}
+
+html body .panel-heading,
+html body .texture-card,
+html body .media-style-control,
+html body .media-style-control + .section-heading,
+html body .tip {
+  border-color: var(--editor-line);
+}
+
+html body .panel-heading h1 {
+  color: var(--editor-ink);
+}
+
+html body .control-label,
+html body .section-heading.control-label,
+html body .texture-heading label,
+html body .media-style-control + .section-heading {
+  color: #9a9c94;
+}
+
+html body .inspector label,
+html body .setting label,
+html body .texture-card label,
+html body .frame-options label {
+  color: #d5d6cf;
+}
+
+html body .choice,
+html body .texture-card .choice,
+html body .export-dialog .choice,
+html body .frame-options input,
+html body .inspector textarea {
+  color: #e9eae3 !important;
+  background: #292a26 !important;
+  border-color: #41433c !important;
+  box-shadow: inset 0 1px 0 #ffffff05;
+}
+
+html body [data-slot='select-content'] {
+  color: #e9eae3;
+  background: #292a26 !important;
+  border-color: #484a42 !important;
+  box-shadow: 0 18px 45px #000a !important;
+}
+
+html body [data-slot='select-item'] {
+  color: #e9eae3;
+}
+
+html body [data-slot='select-item'][data-highlighted] {
+  background: #3a3e2e;
+}
+
+html body [data-slot='select-item'] svg {
+  color: var(--editor-accent);
+}
+
+html body .setting span {
+  color: #c4c6be;
+  background: #292a26;
+  border-color: #41433c;
+}
+
+html body [data-slot='slider-track'] {
+  background: #46483f;
+}
+
+html body [data-slot='slider-range'] {
+  background: #9fb44b;
+}
+
+html body [data-slot='slider-thumb'] {
+  background: #eceee5;
+  border-color: #777b6e !important;
+  box-shadow: 0 1px 3px #0008;
+}
+
+html body .texture-card {
+  color: var(--editor-ink);
+  background: transparent;
+}
+
+.texture-card p,
+html body .panel-note,
+html body .empty-note,
+.custom-background span,
+.custom-background p,
+html body .event-list small,
+.auto-focus-card small,
+.tip p span {
+  color: #92958b;
+}
+
+html body .tip,
+.auto-focus-card > div {
+  color: #c0d268;
+}
+
+html body .frame-picker button,
+html body .event-list button,
+html body .auto-focus-card {
+  color: #c9cbc3;
+  background: #292a26;
+  border-color: #41433c;
+}
+
+html body .frame-picker button[aria-pressed='true'],
+html body .event-list button.chosen {
+  color: #eef2db;
+  background: #34382a;
+  border-color: #82923f;
+}
+
+.auto-focus-card b {
+  color: var(--editor-ink);
+}
+
+html body .inspector .btn.danger {
+  color: #e6aaa2 !important;
+  background: #302725;
+  border-color: #5a403c;
+}
+
+html body .main-stage {
+  background: #121310;
+}
+
+html body .preview-space {
+  background: radial-gradient(ellipse at center, #22251f 0%, #121310 72%);
+}
+
+html body .fullscreen-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: auto;
+  padding: 7px 9px;
+  border-radius: 6px;
+  color: #aeb1a8;
+}
+
+html body .fullscreen-button span {
+  color: inherit;
+  font-size: 12px;
+}
+
+html body .main-stage:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  background: #0f100e;
+}
+
+html body .main-stage:fullscreen .preview-space {
+  padding: 24px 48px;
+}
+
+html body .main-stage:fullscreen .render-canvas {
+  width: auto !important;
+  max-width: calc(100vw - 96px);
+  max-height: calc(100vh - 124px) !important;
+}
+
+html body .main-stage:fullscreen .stage-heading {
+  padding-inline: 28px;
+}
+
+html body .main-stage:fullscreen .playback {
+  padding-inline: 28px;
+}
+
+html body .timeline {
+  color: #dfe1da;
+  background: #181916;
+  border-color: #343630;
+}
+
+html body .timeline-toolbar {
+  background: #1f201c;
+  border-color: #343630;
+}
+
+html body .statusbar {
+  color: #8f9288;
+  background: #1d1e1b;
+  border-color: var(--editor-line);
+}
+
+html body .export-dialog {
+  color: var(--editor-ink);
+  background: #20211e !important;
+  border-color: #474940 !important;
+  color-scheme: dark;
+}
+
+html body .export-dialog [data-slot='dialog-description'],
+html body .export-summary span {
+  color: #999c91;
+}
+
+html body .export-summary {
+  background: #191a17;
+  border-color: #3b3d36;
+}
+
+/* Keep every editor surface scrollable while removing distracting tracks. */
+html:has(.studio),
+body:has(.studio),
+html body .studio,
+html body .studio .inspector,
+html body .studio .track-viewport,
+html body .export-dialog {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+html:has(.studio)::-webkit-scrollbar,
+body:has(.studio)::-webkit-scrollbar,
+html body .studio::-webkit-scrollbar,
+html body .studio .inspector::-webkit-scrollbar,
+html body .studio .track-viewport::-webkit-scrollbar,
+html body .export-dialog::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  html body .topbar .btn:hover,
+  html body .inspector .btn:hover {
+    background: #343630;
+    border-color: #505349;
+  }
+
+  html body .topbar .btn.primary:hover,
+  html body .export-dialog .btn.primary:hover {
+    background: #d4e985;
+    border-color: #d4e985;
+  }
+
+  html body .editor-tabs .rail-item:hover {
+    color: #f0f1ea !important;
+    background: #ffffff09 !important;
+  }
+
+  html body .fullscreen-button:hover {
+    color: #f0f1ea;
+    background: #ffffff0a;
+  }
+}

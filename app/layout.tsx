@@ -14,7 +14,12 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: 'Take — Demo Video Editor',
-  description: 'Frame your recording, direct the camera, and export your next launch.',
+  description:
+    'Frame your recording, direct the camera, and export your next launch.',
+  icons: {
+    icon: [{ url: '/favicon.svg?v=2', type: 'image/svg+xml' }],
+    shortcut: '/favicon.svg?v=2',
+  },
 };
 
 export default function RootLayout({
