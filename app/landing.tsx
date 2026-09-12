@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { MouseEvent as ReactMouseEvent } from 'react';
 import {
   ArrowUpRight,
   Play,
@@ -190,8 +191,7 @@ function ScrollStory({ theme }: { theme: number }) {
       {
         motion:
           '(prefers-reduced-motion: no-preference) and (min-height: 640px)',
-        static:
-          '(prefers-reduced-motion: reduce), (max-height: 639px)',
+        static: '(prefers-reduced-motion: reduce), (max-height: 639px)',
       },
       (context) => {
         if (!root.current) return;
@@ -336,6 +336,60 @@ export default function Landing() {
   const bridgeRoot = useRef<HTMLElement>(null);
   const exportsRoot = useRef<HTMLElement>(null);
   const finaleRoot = useRef<HTMLElement>(null);
+  const openingEditor = useRef(false);
+  const openEditor = (event: ReactMouseEvent<HTMLAnchorElement>) => {
+    if (
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    )
+      return;
+    event.preventDefault();
+    if (openingEditor.current) return;
+    openingEditor.current = true;
+    const destination = event.currentTarget.href;
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      location.assign(destination);
+      return;
+    }
+    const overlay = landingRoot.current?.querySelector('.take-opening');
+    const mark = overlay?.querySelector('.take-opening-mark > span');
+    if (!overlay || !mark) {
+      location.assign(destination);
+      return;
+    }
+    gsap.killTweensOf([overlay, mark]);
+    gsap.set(overlay, {
+      animation: 'none',
+      display: 'grid',
+      clipPath: 'inset(100% 0 0 0)',
+    });
+    gsap.set(mark, {
+      animation: 'none',
+      transform: 'translate3d(0,80%,0)',
+      opacity: 0,
+    });
+    gsap
+      .timeline()
+      .to(overlay, {
+        clipPath: 'inset(0% 0 0 0)',
+        duration: 0.42,
+        ease: 'take-in-out',
+      })
+      .to(
+        mark,
+        {
+          transform: 'translate3d(0,0%,0)',
+          opacity: 1,
+          duration: 0.28,
+          ease: 'take-out',
+        },
+        0.14,
+      );
+    window.setTimeout(() => location.assign(destination), 440);
+  };
   useEffect(() => {
     const controller = new AbortController();
     fetch('https://api.github.com/repos/johnmamanao/take-editor', {
@@ -368,6 +422,17 @@ export default function Landing() {
     return () => clearTimeout(timer);
   }, []);
   useLayoutEffect(() => {
+    const root = landingRoot.current;
+    if (!root) return;
+    let cancelled = false;
+    void document.fonts.ready.then(() => {
+      if (!cancelled) root.dataset.loaderReady = 'true';
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  useLayoutEffect(() => {
     gsap.registerPlugin(ScrollTrigger, CustomEase);
     CustomEase.create('take-out', '0.23,1,0.32,1');
     CustomEase.create('take-in-out', '0.77,0,0.175,1');
@@ -377,10 +442,6 @@ export default function Landing() {
       const cinematic = matchMedia(
         '(min-width: 760px) and (min-height: 640px)',
       ).matches;
-      gsap.set('.take-opening-mark > span', {
-        transform: 'translate3d(0,100%,0)',
-        opacity: 0,
-      });
       gsap.set('.take-nav', { transform: 'translateY(-16px)', opacity: 0 });
       gsap.set('.take-intro', { transform: 'translateY(8px)', opacity: 0 });
       gsap.set('.take-hero-line > span', {
@@ -398,21 +459,6 @@ export default function Landing() {
         defaults: { ease: 'take-out', duration: 0.6 },
       });
       entrance
-        .to('.take-opening-mark > span', {
-          transform: 'translate3d(0,0%,0)',
-          opacity: 1,
-          duration: 0.5,
-          ease: 'take-out',
-        })
-        .to(
-          '.take-opening',
-          {
-            clipPath: 'inset(0 0 100% 0)',
-            duration: 0.72,
-            ease: 'take-in-out',
-          },
-          0.56,
-        )
         .to('.take-nav', { transform: 'translateY(0px)', opacity: 1 }, 0.78)
         .to('.take-intro', { transform: 'translateY(0px)', opacity: 1 }, 0.84)
         .to(
@@ -815,7 +861,7 @@ export default function Landing() {
         <div className="take-opening-mark">
           <span>
             <LogoMark className="take-opening-symbol" />
-            take
+            <span className="take-opening-word">take</span>
           </span>
         </div>
       </div>
@@ -843,12 +889,7 @@ export default function Landing() {
                 : `Star Take on GitHub, ${starCount.toLocaleString('en-US')} stars`
             }
           >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-            >
+            <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
               <path
                 fill="currentColor"
                 d="M12 .7a11.3 11.3 0 0 0-3.6 22c.6.1.8-.2.8-.5v-2c-3.3.7-4-1.4-4-1.4-.5-1.4-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.6.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.6 3.3-1.2 3.3-1.2.6 1.6.2 2.9.1 3.2.8.9 1.2 2 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.5A11.3 11.3 0 0 0 12 .7Z"
@@ -863,7 +904,7 @@ export default function Landing() {
                 : starCount.toLocaleString('en-US')}
             </span>
           </a>
-          <a className="take-nav-open" href="/editor">
+          <a className="take-nav-open" href="/editor" onClick={openEditor}>
             Open editor <ArrowUpRight size={16} />
           </a>
         </div>
@@ -883,7 +924,7 @@ export default function Landing() {
         <p className="take-description">
           Trim the pauses, frame your app, and zoom into what matters.
         </p>
-        <a className="take-button" href="/editor">
+        <a className="take-button" href="/editor" onClick={openEditor}>
           Open the editor <ArrowUpRight size={18} />
         </a>
         <p className="take-note">
@@ -1035,7 +1076,7 @@ export default function Landing() {
           <span>
             Try the controls. This sample uses the editor’s rendering engine.
           </span>
-          <a href="/editor">
+          <a href="/editor" onClick={openEditor}>
             Use your own recording <ArrowUpRight size={14} />
           </a>
         </div>
@@ -1149,7 +1190,7 @@ export default function Landing() {
             Leave with the demo.
           </h2>
           <p>No account. No upload queue. Your files stay on your device.</p>
-          <a className="take-button" href="/editor">
+          <a className="take-button" href="/editor" onClick={openEditor}>
             Open the editor <ArrowUpRight size={18} />
           </a>
         </div>
@@ -1165,7 +1206,7 @@ export default function Landing() {
         <nav aria-label="Footer navigation">
           <a href="#demo">Try the demo</a>
           <a href="#exports">Export details</a>
-          <a href="/editor">
+          <a href="/editor" onClick={openEditor}>
             Open editor <ArrowUpRight size={14} />
           </a>
         </nav>

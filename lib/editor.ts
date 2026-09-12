@@ -78,7 +78,7 @@ export const themes: {
   },
 ];
 export const initialProject: Project = {
-  name: 'My first demo',
+  name: 'Untitled demo',
   ratio: '16:9',
   theme: 0,
   backgroundMode: 'preset',

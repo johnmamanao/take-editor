@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react';
 import { gsap } from 'gsap';
 import { CustomEase } from 'gsap/CustomEase';
 
@@ -7,7 +7,7 @@ export function useStudioMotion(
   tab: string,
 ) {
   const keyboard = useRef(false);
-  useEffect(() => {
+  useLayoutEffect(() => {
     gsap.registerPlugin(CustomEase);
     CustomEase.create('take-out', '0.23,1,0.32,1');
     const onKey = () => {
@@ -29,9 +29,25 @@ export function useStudioMotion(
           clearProps: 'transform,opacity',
         },
       });
-      tl.from('.brand-mark', { rotation: -18, scale: 0.92, opacity: 0.5 })
-        .from('.main-stage', { y: 6, opacity: 0.5 }, 0.04)
-        .from('.timeline', { y: 5, opacity: 0.5 }, 0.08);
+      tl.from('.editor-brand-mark', {
+        transform: 'rotate(-8deg) scale(0.94)',
+        opacity: 0.5,
+      })
+        .from(
+          '.inspector',
+          { transform: 'translate3d(-6px,0,0)', opacity: 0.5 },
+          0.02,
+        )
+        .from(
+          '.main-stage',
+          { transform: 'translate3d(0,6px,0)', opacity: 0.5 },
+          0.04,
+        )
+        .from(
+          '.timeline',
+          { transform: 'translate3d(0,5px,0)', opacity: 0.5 },
+          0.08,
+        );
     });
     return () => {
       mm.revert();

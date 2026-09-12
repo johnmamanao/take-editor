@@ -39,6 +39,45 @@ html body .project-name > span {
   color: #686a64;
 }
 
+html body .project-name {
+  gap: 8px;
+}
+
+html body .project-name label {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+html body .project-name input {
+  width: clamp(130px, 18vw, 230px);
+  padding: 7px 28px 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  transition:
+    color 160ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease;
+}
+
+html body .project-name input:focus {
+  border: 1px solid #59623c;
+  background: #262821;
+}
+
+html body .project-name label > svg {
+  position: absolute;
+  right: 9px;
+  color: #898d81;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms ease;
+}
+
+html body .project-name label:focus-within > svg {
+  opacity: 1;
+}
+
 html body .saved svg {
   color: var(--editor-accent);
 }
@@ -407,6 +446,15 @@ html body .export-dialog::-webkit-scrollbar {
 }
 
 @media (hover: hover) and (pointer: fine) {
+  html body .project-name label:hover input {
+    border-color: #40433a;
+    background: #23241f;
+  }
+
+  html body .project-name label:hover > svg {
+    opacity: 1;
+  }
+
   html body .topbar .btn:hover,
   html body .inspector .btn:hover {
     background: #343630;

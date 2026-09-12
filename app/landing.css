@@ -53,23 +53,46 @@
   pointer-events: none;
 }
 .take-opening-mark {
-  overflow: clip;
-  padding: 0 0.12em 0.1em 0;
-  margin: 0 -0.12em -0.1em 0;
+  overflow: visible;
 }
 .take-opening-mark > span {
-  display: flex;
+  display: grid;
+  grid-template-columns: 0.66em 1.95em;
   align-items: center;
-  gap: 13px;
+  column-gap: 0.18em;
   font-size: clamp(42px, 6vw, 76px);
   font-weight: 720;
   letter-spacing: -0.055em;
+  line-height: 0.9;
+  opacity: 0;
+  transform: translate3d(0, 24%, 0);
+  backface-visibility: hidden;
   will-change: transform;
 }
+.take-opening-word {
+  justify-self: start;
+}
 .take-opening-symbol {
-  width: 48px;
-  height: 48px;
+  width: 0.66em;
+  height: 0.66em;
   color: #c9df70;
+}
+.take-landing[data-loader-ready='true'] .take-opening-mark > span {
+  animation: take-opening-lockup-in 500ms var(--ease-out) both;
+}
+.take-landing[data-loader-ready='true'] .take-opening {
+  animation: take-opening-curtain-out 720ms var(--ease-in-out) 560ms both;
+}
+@keyframes take-opening-lockup-in {
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+@keyframes take-opening-curtain-out {
+  to {
+    clip-path: inset(0 0 100% 0);
+  }
 }
 .take-skip {
   position: fixed;
@@ -88,9 +111,9 @@
   margin: auto;
   height: 88px;
   padding: 0 28px;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
 }
 .take-wordmark {
   font-size: 32px;
@@ -108,12 +131,14 @@
 }
 .take-nav-links {
   display: flex;
+  justify-self: center;
   gap: 30px;
   font-size: 14px;
   color: var(--muted);
 }
 .take-nav-actions {
   display: flex;
+  justify-self: end;
   align-items: center;
   gap: 18px;
 }
@@ -749,6 +774,7 @@
   .take-nav {
     height: 72px;
     padding: 0 20px;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
   .take-nav-links {
     display: none;

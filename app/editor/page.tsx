@@ -39,6 +39,7 @@ import {
   Loader2,
   Maximize2,
   Minimize2,
+  PencilLine,
 } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
@@ -1526,12 +1527,23 @@ export default function Home() {
         </a>
         <div className="project-name">
           <span>Workspace /</span>
-          <input
-            aria-label="Project name"
-            value={p.name}
-            maxLength={70}
-            onChange={(e) => update({ name: e.target.value })}
-          />
+          <label title="Rename project">
+            <input
+              aria-label="Project name"
+              value={p.name}
+              placeholder="Untitled demo"
+              maxLength={70}
+              onFocus={(event) => {
+                if (
+                  event.currentTarget.value === 'My first demo' ||
+                  event.currentTarget.value === 'Untitled demo'
+                )
+                  event.currentTarget.select();
+              }}
+              onChange={(e) => update({ name: e.target.value })}
+            />
+            <PencilLine size={13} aria-hidden="true" />
+          </label>
         </div>
         <div className="header-actions">
           <span className="saved">
