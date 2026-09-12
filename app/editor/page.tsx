@@ -145,30 +145,16 @@ function download(blob: Blob, name: string) {
   setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
 
-async function seekVideoFrame(video: HTMLVideoElement, time: number) {
-  if (Math.abs(video.currentTime - time) < 0.02 && video.readyState >= 2)
-    return;
-  await new Promise<void>((resolve, reject) => {
-    const timer = window.setTimeout(
-      () => reject(new Error('A frame took too long to analyze.')),
-      5000,
-    );
-    video.addEventListener(
-      'seeked',
-      () => {
-        window.clearTimeout(timer);
-        requestAnimationFrame(() => resolve());
-      },
-      { once: true },
-    );
-    video.currentTime = time;
-  });
-}
-
 async function findActivityZooms(
-  video: HTMLVideoElement,
+  source: Blob,
   project: Project,
 ): Promise<Zoom[]> {
+  const { ALL_FORMATS, BlobSource, CanvasSink, Input } =
+    await import('mediabunny');
+  const input = new Input({
+    formats: ALL_FORMATS,
+    source: new BlobSource(source),
+  });
   const width = 160,
     height = 100,
     columns = 8,
@@ -181,8 +167,10 @@ async function findActivityZooms(
   const projectDuration = duration(project);
   if (!Number.isFinite(projectDuration) || projectDuration < 1)
     throw new Error('This recording is too short to analyze.');
-  const previousTime = video.currentTime;
-  const sampleCount = Math.min(10, Math.max(4, Math.ceil(projectDuration / 4)));
+  const sampleCount = Math.min(
+    36,
+    Math.max(12, Math.ceil(projectDuration / 4)),
+  );
   const samples = Array.from(
     { length: sampleCount },
     (_, index) =>
@@ -194,25 +182,43 @@ async function findActivityZooms(
     y: number;
     score: number;
   }> = [];
+  let previousFrame: Uint8ClampedArray | null = null;
+  let previousSampleTime = 0;
   try {
-    for (const sampleTime of samples) {
-      await seekVideoFrame(
-        video,
-        sourceTime(project, Math.max(0, sampleTime - 0.28)),
-      );
-      context.drawImage(video, 0, 0, width, height);
-      const before = context.getImageData(0, 0, width, height).data;
-      await seekVideoFrame(video, sourceTime(project, sampleTime));
-      context.drawImage(video, 0, 0, width, height);
-      const after = context.getImageData(0, 0, width, height).data;
+    const track = await input.getPrimaryVideoTrack();
+    if (!track || !(await track.canDecode()))
+      throw new Error('This recording cannot be analyzed in this browser.');
+    const inputStart = await input.getFirstTimestamp([track]);
+    const sink = new CanvasSink(track, {
+      width,
+      height,
+      fit: 'fill',
+      poolSize: 2,
+    });
+    const sourceTimestamps = samples.map(
+      (sampleTime) => inputStart + sourceTime(project, sampleTime),
+    );
+    let sampleIndex = 0;
+    for await (const frame of sink.canvasesAtTimestamps(sourceTimestamps)) {
+      const sampleTime = samples[sampleIndex++];
+      if (!frame) continue;
+      context.clearRect(0, 0, width, height);
+      context.drawImage(frame.canvas, 0, 0, width, height);
+      const current = context.getImageData(0, 0, width, height).data;
+      if (!previousFrame) {
+        previousFrame = current;
+        previousSampleTime = sampleTime;
+        continue;
+      }
       const scores = new Float32Array(columns * rows);
       for (let y = 0; y < height; y += 2) {
         for (let x = 0; x < width; x += 2) {
           const pixel = (y * width + x) * 4;
           const difference =
-            Math.abs(after[pixel] - before[pixel]) +
-            Math.abs(after[pixel + 1] - before[pixel + 1]) +
-            Math.abs(after[pixel + 2] - before[pixel + 2]);
+            Math.abs(current[pixel] - previousFrame[pixel]) +
+            Math.abs(current[pixel + 1] - previousFrame[pixel + 1]) +
+            Math.abs(current[pixel + 2] - previousFrame[pixel + 2]);
+          if (difference < 30) continue;
           const cell =
             Math.min(rows - 1, Math.floor((y / height) * rows)) * columns +
             Math.min(columns - 1, Math.floor((x / width) * columns));
@@ -220,40 +226,70 @@ async function findActivityZooms(
         }
       }
       let strongest = 0;
-      for (let index = 1; index < scores.length; index++)
-        if (scores[index] > scores[strongest]) strongest = index;
+      let strongestScore = 0;
+      for (let index = 0; index < scores.length; index++) {
+        const column = index % columns;
+        const row = Math.floor(index / columns);
+        let neighborhood = scores[index];
+        for (let offsetY = -1; offsetY <= 1; offsetY++) {
+          for (let offsetX = -1; offsetX <= 1; offsetX++) {
+            if (!offsetX && !offsetY) continue;
+            const neighborX = column + offsetX;
+            const neighborY = row + offsetY;
+            if (
+              neighborX >= 0 &&
+              neighborX < columns &&
+              neighborY >= 0 &&
+              neighborY < rows
+            )
+              neighborhood += scores[neighborY * columns + neighborX] * 0.22;
+          }
+        }
+        const edgeDistance =
+          Math.abs(column + 0.5 - columns / 2) / (columns / 2) +
+          Math.abs(row + 0.5 - rows / 2) / (rows / 2);
+        const weighted =
+          neighborhood * (1 - Math.min(0.2, edgeDistance * 0.08));
+        if (weighted > strongestScore) {
+          strongest = index;
+          strongestScore = weighted;
+        }
+      }
       candidates.push({
-        time: sampleTime,
+        time: (previousSampleTime + sampleTime) / 2,
         x: ((strongest % columns) + 0.5) / columns,
         y: (Math.floor(strongest / columns) + 0.5) / rows,
-        score: scores[strongest],
+        score: strongestScore,
       });
+      previousFrame = current;
+      previousSampleTime = sampleTime;
     }
   } finally {
-    await seekVideoFrame(video, Math.min(previousTime, video.duration));
+    input.dispose();
   }
   const chosen: typeof candidates = [];
   const strongestScore = Math.max(...candidates.map((item) => item.score));
+  const targetCount = Math.min(5, Math.max(1, Math.ceil(projectDuration / 28)));
   const ranked = candidates
-    .filter((item) => item.score >= Math.max(800, strongestScore * 0.18))
+    .filter((item) => item.score >= Math.max(250, strongestScore * 0.16))
     .sort((a, b) => b.score - a.score);
   for (const candidate of ranked) {
-    if (chosen.every((item) => Math.abs(item.time - candidate.time) > 3.4))
+    if (chosen.every((item) => Math.abs(item.time - candidate.time) > 4.2))
       chosen.push(candidate);
-    if (chosen.length === Math.min(3, Math.ceil(projectDuration / 7))) break;
+    if (chosen.length === targetCount) break;
   }
   return chosen
     .sort((a, b) => a.time - b.time)
     .map((candidate) => {
       const start = clamp(
-        candidate.time - 0.7,
+        candidate.time - 1,
         0,
         Math.max(0, projectDuration - 2.8),
       );
       return {
         id: uid(),
         start,
-        duration: Math.min(2.8, projectDuration - start),
+        duration: Math.min(3.2, projectDuration - start),
         scale: 1.28,
         x: clamp(candidate.x, 0.18, 0.82),
         y: clamp(candidate.y, 0.18, 0.82),
@@ -309,7 +345,8 @@ export default function Home() {
     } | null>(null),
     sourceDuration = useRef(24),
     sourceFile = useRef<Blob | null>(null),
-    urlRef = useRef('');
+    urlRef = useRef(''),
+    zoomPreviewEnd = useRef<number | null>(null);
   const zoomDrag = useRef<{
     id: string;
     pointerId: number;
@@ -471,6 +508,19 @@ export default function Home() {
     live.current.time = next;
     setTime(next);
   }, []);
+  const previewZoom = useCallback(
+    (target: Zoom) => {
+      setSelected(target.id);
+      setTab('Zoom');
+      seek(Math.max(0, target.start - 0.8));
+      zoomPreviewEnd.current = Math.min(
+        duration(live.current.p),
+        target.start + target.duration + 0.65,
+      );
+      setPlaying(true);
+    },
+    [seek],
+  );
   const addZoom = () => {
     const at = Math.min(time, Math.max(0, total - 1)),
       z = {
@@ -491,42 +541,42 @@ export default function Home() {
     setPlaying(false);
     setAnalyzing(true);
     try {
-      const next =
-        videoUrl && video.current
-          ? await findActivityZooms(video.current, p)
-          : [
-              {
-                id: uid(),
-                start: 3.4,
-                duration: 2.8,
-                scale: 1.28,
-                x: 0.32,
-                y: 0.65,
-              },
-              {
-                id: uid(),
-                start: 10.7,
-                duration: 2.8,
-                scale: 1.28,
-                x: 0.82,
-                y: 0.65,
-              },
-              {
-                id: uid(),
-                start: 16.1,
-                duration: 2.8,
-                scale: 1.28,
-                x: 0.43,
-                y: 0.32,
-              },
-            ].filter((item) => item.start < total - 0.2);
+      const next = videoUrl
+        ? await findActivityZooms(
+            sourceFile.current ?? (await (await fetch(videoUrl)).blob()),
+            p,
+          )
+        : [
+            {
+              id: uid(),
+              start: 3.4,
+              duration: 2.8,
+              scale: 1.28,
+              x: 0.32,
+              y: 0.65,
+            },
+            {
+              id: uid(),
+              start: 10.7,
+              duration: 2.8,
+              scale: 1.28,
+              x: 0.82,
+              y: 0.65,
+            },
+            {
+              id: uid(),
+              start: 16.1,
+              duration: 2.8,
+              scale: 1.28,
+              x: 0.43,
+              y: 0.32,
+            },
+          ].filter((item) => item.start < total - 0.2);
       if (!next.length) throw new Error('No clear activity was found.');
       update({ zooms: next });
-      setSelected(next[0].id);
-      setTab('Zoom');
-      seek(next[0].start + Math.min(0.7, next[0].duration / 2));
+      previewZoom(next[0]);
       inform(
-        `${next.length} focus ${next.length === 1 ? 'moment' : 'moments'} added. Review them on the timeline.`,
+        `${next.length} focus ${next.length === 1 ? 'moment' : 'moments'} added. Previewing the first one now.`,
       );
     } catch (error) {
       inform(`Auto focus could not finish: ${(error as Error).message}`);
@@ -654,6 +704,7 @@ export default function Home() {
     }
   };
   const toggle = () => {
+    zoomPreviewEnd.current = null;
     if (time >= total - 0.02) setTime(0);
     setPlaying((v) => !v);
   };
@@ -764,13 +815,18 @@ export default function Home() {
       let t = state.time;
       const v = video.current;
       if (state.playing) {
-        t = Math.min(duration(state.p), t + Math.min((now - last) / 1000, 0.1));
+        const playbackEnd = Math.min(
+          duration(state.p),
+          zoomPreviewEnd.current ?? Number.POSITIVE_INFINITY,
+        );
+        t = Math.min(playbackEnd, t + Math.min((now - last) / 1000, 0.1));
         state.time = t;
-        if (t >= duration(state.p)) {
+        if (t >= playbackEnd) {
+          zoomPreviewEnd.current = null;
           setPlaying(false);
           v?.pause();
         }
-        if (now - lastUi >= 1000 / 30 || t >= duration(state.p)) {
+        if (now - lastUi >= 1000 / 30 || t >= playbackEnd) {
           setTime(t);
           lastUi = now;
         }
@@ -1900,15 +1956,22 @@ export default function Home() {
               </TabsContent>
               <TabsContent value="Zoom">
                 <div className="auto-focus-card">
-                  <div>
-                    <Sparkles size={16} />
-                    <span>
+                  <div className="auto-focus-copy">
+                    <span className="auto-focus-title">
+                      <span className="auto-focus-icon" aria-hidden="true">
+                        <Sparkles size={15} />
+                      </span>
                       <b>Auto focus</b>
-                      <small>Find visible activity and add gentle zooms.</small>
+                    </span>
+                    <span>
+                      <small>
+                        Detect meaningful changes in the recording and create
+                        focused camera moves.
+                      </small>
                     </span>
                   </div>
                   <button
-                    className="btn"
+                    className="btn wide auto-focus-action"
                     disabled={analyzing || missingSource}
                     onClick={() => void autoFocus()}
                   >
@@ -1917,12 +1980,19 @@ export default function Home() {
                     ) : (
                       <Sparkles size={14} />
                     )}
-                    {analyzing ? 'Analyzing' : 'Generate'}
+                    {analyzing
+                      ? 'Analyzing'
+                      : p.zooms.length
+                        ? 'Generate again'
+                        : 'Generate zooms'}
                   </button>
                 </div>
-                <button className="btn wide" onClick={addZoom}>
-                  <Plus size={14} /> Add zoom at playhead
-                </button>
+                <div className="manual-zoom-row">
+                  <span>Manual</span>
+                  <button className="btn" onClick={addZoom}>
+                    <Plus size={14} /> Add at playhead
+                  </button>
+                </div>
                 <div className="event-list">
                   {p.zooms.map((z, i) => (
                     <button
@@ -1942,6 +2012,13 @@ export default function Home() {
                 </div>
                 {zoom ? (
                   <>
+                    <button
+                      className="btn wide"
+                      onClick={() => previewZoom(zoom)}
+                    >
+                      <Play size={14} fill="currentColor" /> Preview selected
+                      zoom
+                    </button>
                     <Range
                       label="Magnification"
                       value={zoom.scale}

@@ -205,6 +205,70 @@ html body .event-list button.chosen {
   color: var(--editor-ink);
 }
 
+html body .auto-focus-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
+  padding: 14px;
+}
+
+html body .auto-focus-card > .auto-focus-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+html body .auto-focus-card .auto-focus-title {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 9px;
+}
+
+.auto-focus-icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border-radius: 7px;
+  color: #d4e77c;
+  background: #3a3e2c;
+}
+
+html body .auto-focus-card .auto-focus-copy > span:last-child {
+  display: block;
+}
+
+html body .auto-focus-card small {
+  display: block;
+  max-width: 25ch;
+  line-height: 1.5;
+}
+
+html body .auto-focus-card .auto-focus-action {
+  justify-content: center;
+}
+
+.manual-zoom-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 2px 0 12px;
+}
+
+.manual-zoom-row > span {
+  color: #92958b;
+  font:
+    10px var(--font-geist-mono),
+    monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 html body .inspector .btn.danger {
   color: #e6aaa2 !important;
   background: #302725;
