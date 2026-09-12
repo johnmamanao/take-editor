@@ -130,13 +130,16 @@ export function camera(p: Project, t: number) {
     y = 0.5;
   const z = p.zooms.find((z) => t >= z.start && t <= z.start + z.duration);
   if (z) {
-    const edge = Math.min(0.9, z.duration / 2.5);
+    const edge = Math.min(1.15, z.duration / 2.4);
     const u = clamp(
       Math.min((t - z.start) / edge, (z.start + z.duration - t) / edge),
       0,
       1,
     );
-    const ease = 1 - Math.pow(1 - u, 5);
+    // Quintic smootherstep has zero velocity and acceleration at both ends.
+    // That keeps camera motion fluid on high-refresh displays instead of
+    // snapping into the old ease-out curve on its first frame.
+    const ease = u * u * u * (u * (u * 6 - 15) + 10);
     scale = 1 + (z.scale - 1) * ease;
     x = 0.5 + (z.x - 0.5) * ease;
     y = 0.5 + (z.y - 0.5) * ease;
@@ -306,6 +309,7 @@ export function sampleCursor(t: number) {
 let sample: HTMLCanvasElement | undefined;
 let asciiSampler: HTMLCanvasElement | undefined;
 let backgroundLayer: HTMLCanvasElement | undefined;
+let cachedBackground: { key: string; canvas: HTMLCanvasElement } | undefined;
 let heldVideoFrame: HTMLCanvasElement | undefined;
 let heldVideoSource = '';
 
@@ -316,6 +320,58 @@ function layer(width: number, height: number) {
     backgroundLayer.height = height;
   }
   return backgroundLayer;
+}
+
+function paintProjectBackground(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  p: Project,
+  theme: (typeof themes)[number],
+) {
+  const presetReady =
+    p.backgroundMode === 'preset' &&
+    !!theme.image &&
+    paintPresetImage(
+      context,
+      width,
+      height,
+      theme.image,
+      p.texture === 'ascii',
+      p.textureStrength,
+      p.pixelSize,
+      p.backgroundCharacters,
+    );
+  if (presetReady) return true;
+  if (p.backgroundMode === 'color') {
+    context.fillStyle = p.backgroundColor || '#22352b';
+    context.fillRect(0, 0, width, height);
+    return true;
+  }
+  if (
+    p.backgroundMode === 'image' &&
+    paintImage(
+      context,
+      width,
+      height,
+      p.texture === 'ascii',
+      p.textureStrength,
+      p.pixelSize,
+      p.backgroundCharacters,
+    )
+  )
+    return true;
+  paintBackground(
+    context,
+    width,
+    height,
+    theme.colors,
+    p.texture ?? 'dither',
+    p.textureStrength ?? 75,
+    p.pixelSize ?? 3,
+    p.backgroundCharacters,
+  );
+  return p.backgroundMode !== 'preset' || !theme.image;
 }
 
 function drawAsciiMedia(
@@ -367,7 +423,7 @@ export function renderFrame(
   canvas: HTMLCanvasElement,
   p: Project,
   t: number,
-  video?: HTMLVideoElement | null,
+  video?: CanvasImageSource | null,
 ) {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
@@ -376,75 +432,86 @@ export function renderFrame(
   ctx.clearRect(0, 0, W, H);
   const theme = themes[p.theme] || themes[0];
   const backgroundBlur = p.backgroundBlur ?? 0;
-  const needsBackgroundLayer = backgroundBlur > 0;
-  const backgroundCanvas = needsBackgroundLayer ? layer(W, H) : canvas;
-  const backgroundContext = backgroundCanvas.getContext('2d')!;
-  if (needsBackgroundLayer) backgroundContext.clearRect(0, 0, W, H);
-  if (
-    p.backgroundMode === 'preset' &&
-    theme.image &&
-    paintPresetImage(
-      backgroundContext,
-      W,
-      H,
-      theme.image,
-      p.texture === 'ascii',
-      p.textureStrength,
-      p.pixelSize,
-      p.backgroundCharacters,
-    )
-  ) {
-    // The bundled image is ready and has been painted.
-  } else if (p.backgroundMode === 'color') {
-    backgroundContext.fillStyle = p.backgroundColor || '#22352b';
-    backgroundContext.fillRect(0, 0, W, H);
-  } else if (
-    p.backgroundMode !== 'image' ||
-    !paintImage(
-      backgroundContext,
-      W,
-      H,
-      p.texture === 'ascii',
-      p.textureStrength,
-      p.pixelSize,
-      p.backgroundCharacters,
-    )
-  )
-    paintBackground(
-      backgroundContext,
-      W,
-      H,
-      theme.colors,
-      p.texture ?? 'dither',
-      p.textureStrength ?? 75,
-      p.pixelSize ?? 3,
-      p.backgroundCharacters,
-    );
-  if (needsBackgroundLayer) {
-    ctx.save();
+  const backgroundKey =
+    p.backgroundMode === 'image'
+      ? ''
+      : JSON.stringify([
+          W,
+          H,
+          p.backgroundMode,
+          p.backgroundColor,
+          p.theme,
+          p.texture,
+          p.textureStrength,
+          p.pixelSize,
+          p.backgroundCharacters,
+          backgroundBlur,
+        ]);
+  if (backgroundKey && cachedBackground?.key === backgroundKey) {
+    ctx.drawImage(cachedBackground.canvas, 0, 0);
+  } else {
+    if (!cachedBackground)
+      cachedBackground = {
+        key: '',
+        canvas: document.createElement('canvas'),
+      };
+    const backgroundCanvas = backgroundKey ? cachedBackground.canvas : canvas;
+    if (backgroundCanvas.width !== W || backgroundCanvas.height !== H) {
+      backgroundCanvas.width = W;
+      backgroundCanvas.height = H;
+    }
+    const backgroundContext = backgroundCanvas.getContext('2d')!;
+    backgroundContext.clearRect(0, 0, W, H);
+    let backgroundReady = true;
     if (backgroundBlur > 0) {
+      const unblurred = layer(W, H);
+      const unblurredContext = unblurred.getContext('2d')!;
+      unblurredContext.clearRect(0, 0, W, H);
+      backgroundReady = paintProjectBackground(
+        unblurredContext,
+        W,
+        H,
+        p,
+        theme,
+      );
       const blur = (backgroundBlur / 1080) * W;
       const overscan = Math.ceil(blur * 2.5);
-      ctx.filter = `blur(${blur}px)`;
-      ctx.drawImage(
-        backgroundCanvas,
+      backgroundContext.save();
+      backgroundContext.filter = `blur(${blur}px)`;
+      backgroundContext.drawImage(
+        unblurred,
         -overscan,
         -overscan,
         W + overscan * 2,
         H + overscan * 2,
       );
+      backgroundContext.restore();
     } else {
+      backgroundReady = paintProjectBackground(
+        backgroundContext,
+        W,
+        H,
+        p,
+        theme,
+      );
+    }
+    if (backgroundKey) {
+      cachedBackground.key = backgroundReady ? backgroundKey : '';
       ctx.drawImage(backgroundCanvas, 0, 0);
     }
-    ctx.restore();
   }
   if (!sample) {
     sample = document.createElement('canvas');
     sample.width = 1280;
     sample.height = 800;
   }
-  const sw = video?.videoWidth || 1280,
-    sh = video?.videoHeight || 800;
+  const videoElement = video instanceof HTMLVideoElement ? video : null;
+  const sw =
+      videoElement?.videoWidth ||
+      (video && 'width' in video ? Number(video.width) : 1280),
+    sh =
+      videoElement?.videoHeight ||
+      (video && 'height' in video ? Number(video.height) : 800);
   const {
     w,
     h,
@@ -480,13 +547,13 @@ export function renderFrame(
   ctx.scale(cam.scale, cam.scale);
   const hasImportedVideo = !!video;
   let source: CanvasImageSource | null = null;
-  if (hasImportedVideo) {
-    const sourceKey = video.currentSrc || video.src;
+  if (videoElement) {
+    const sourceKey = videoElement.currentSrc || videoElement.src;
     if (sourceKey !== heldVideoSource) {
       heldVideoFrame = undefined;
       heldVideoSource = sourceKey;
     }
-    if (video.readyState >= 2) {
+    if (videoElement.readyState >= 2) {
       if (!heldVideoFrame) heldVideoFrame = document.createElement('canvas');
       if (heldVideoFrame.width !== Math.ceil(w))
         heldVideoFrame.width = Math.ceil(w);
@@ -497,7 +564,7 @@ export function renderFrame(
       held.imageSmoothingQuality = 'high';
       try {
         held.drawImage(
-          video,
+          videoElement,
           0,
           0,
           heldVideoFrame.width,
@@ -509,6 +576,8 @@ export function renderFrame(
       }
     }
     if (heldVideoFrame?.width && heldVideoFrame.height) source = heldVideoFrame;
+  } else if (video) {
+    source = video;
   } else {
     drawSample(sample.getContext('2d')!, t);
     source = sample;

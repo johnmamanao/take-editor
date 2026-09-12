@@ -220,18 +220,46 @@ html body .preview-space {
 }
 
 html body .fullscreen-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  width: auto;
-  padding: 7px 9px;
-  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
   color: #aeb1a8;
 }
 
-html body .fullscreen-button span {
-  color: inherit;
-  font-size: 12px;
+html body .timeline-scale {
+  min-height: 28px;
+  gap: 3px;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+  background: transparent;
+}
+
+html body .timeline-scale button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  min-width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 50% !important;
+  color: #8f958b;
+  background: transparent;
+}
+
+html body .timeline-scale button:disabled {
+  opacity: 0.32;
+}
+
+html body .timeline-scale output {
+  min-width: 34px;
+  color: #a8afa3;
 }
 
 html body .main-stage:fullscreen {
@@ -334,6 +362,51 @@ html body .export-dialog::-webkit-scrollbar {
 
   html body .fullscreen-button:hover {
     color: #f0f1ea;
-    background: #ffffff0a;
+    background: #ffffff0d;
   }
+
+  html body .timeline-scale button:hover:not(:disabled) {
+    color: #e7e9e2;
+    background: #ffffff0d;
+  }
+}
+
+/* The dialog is portalled outside .studio, so define its editor tokens here. */
+html body .export-dialog {
+  --editor-accent: #c9df70;
+  --editor-ink: #f1f1eb;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-height: 90dvh;
+  overflow: hidden;
+}
+
+html body .export-dialog-body {
+  display: grid;
+  min-height: 0;
+  overflow-y: auto;
+  gap: 16px;
+  padding-right: 2px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+html body .export-dialog-body::-webkit-scrollbar {
+  display: none;
+}
+
+html body .export-dialog .btn.primary.wide {
+  flex: 0 0 auto;
+  min-height: 42px;
+  margin-top: 18px;
+  color: #202316 !important;
+  background: #c9df70 !important;
+  border-color: #c9df70 !important;
+  opacity: 1;
+}
+
+html body .export-dialog .btn.primary.wide svg {
+  color: currentColor;
+  stroke: currentColor;
 }

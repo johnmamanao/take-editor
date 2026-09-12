@@ -280,7 +280,8 @@ export default function Home() {
     [exporting, setExporting] = useState(false),
     [progress, setProgress] = useState(0),
     [quality, setQuality] = useState('source'),
-    [fps, setFps] = useState('60'),
+    [fps, setFps] = useState('30'),
+    [bitrateSetting, setBitrateSetting] = useState('auto'),
     [encodingQuality, setEncodingQuality] = useState('high'),
     [backgroundName, setBackgroundName] = useState(''),
     [history, setHistory] = useState<Project[]>([]),
@@ -291,7 +292,8 @@ export default function Home() {
     [timelineScale, setTimelineScale] = useState(1),
     [sourceId, setSourceId] = useState('sample'),
     [missingSource, setMissingSource] = useState(false),
-    [sourceHeight, setSourceHeight] = useState(1080);
+    [sourceHeight, setSourceHeight] = useState(1080),
+    [webCodecsAvailable, setWebCodecsAvailable] = useState(false);
   useStudioMotion(root, tab);
   const canvas = useRef<HTMLCanvasElement>(null),
     video = useRef<HTMLVideoElement>(null),
@@ -306,6 +308,7 @@ export default function Home() {
       source: MediaElementAudioSourceNode;
     } | null>(null),
     sourceDuration = useRef(24),
+    sourceFile = useRef<Blob | null>(null),
     urlRef = useRef('');
   const zoomDrag = useRef<{
     id: string;
@@ -352,17 +355,28 @@ export default function Home() {
     quality === 'source'
       ? clamp(sourceHeight || 1080, 360, 2160)
       : Number(quality);
-  const bitrate = Math.round(
+  const effectiveExportFps = webCodecsAvailable
+    ? Number(fps)
+    : Math.min(Number(fps), 30);
+  const automaticBitrate = Math.round(
     8000000 *
       (exportQuality / 1080) ** 2 *
-      (Number(fps) / 30) *
+      (effectiveExportFps / 30) *
       (encodingQuality === 'maximum'
         ? 1.5
         : encodingQuality === 'compact'
           ? 0.6
           : 1),
   );
+  const bitrate =
+    bitrateSetting === 'auto'
+      ? automaticBitrate
+      : Number(bitrateSetting) * 1_000_000;
   const inform = useCallback((s: string) => setNotice(s), []);
+
+  useEffect(() => {
+    setWebCodecsAvailable(typeof VideoEncoder !== 'undefined');
+  }, []);
 
   useEffect(() => {
     const syncFullscreen = () =>
@@ -671,6 +685,7 @@ export default function Home() {
               stored.sourceId === expectedSource));
         if (matches) {
           const url = URL.createObjectURL(stored.file);
+          sourceFile.current = stored.file;
           urlRef.current = url;
           setVideoUrl(url);
           setFileName(stored.file.name);
@@ -877,6 +892,7 @@ export default function Home() {
       setSourceHeight(probe.videoHeight || 1080);
       URL.revokeObjectURL(urlRef.current);
       urlRef.current = url;
+      sourceFile.current = file;
       const nextSourceId = uid();
       setVideoUrl(url);
       setSourceId(nextSourceId);
@@ -915,32 +931,273 @@ export default function Home() {
       setLoading(false);
     }
   }
+  async function exportVideoFast() {
+    if (typeof VideoEncoder === 'undefined') return null;
+
+    const media = await import('mediabunny');
+    const {
+      ALL_FORMATS,
+      AudioSampleSink,
+      AudioSampleSource,
+      BlobSource,
+      BufferTarget,
+      CanvasSource,
+      Input,
+      Mp4OutputFormat,
+      Output,
+      Quality,
+      VideoSampleSink,
+      canEncodeAudio,
+      canEncodeVideo,
+    } = media;
+    const [ew, eh] = size(p.ratio, exportQuality);
+    const out = document.createElement('canvas');
+    out.width = ew;
+    out.height = eh;
+    const frameRate = Number(fps);
+    const frameDuration = 1 / frameRate;
+    const videoQuality = new Quality({
+      bitrate: Math.min(bitrate, 32_000_000),
+      bitrateMode: 'variable',
+    });
+    const audioQuality = new Quality({
+      bitrate: 192000,
+      bitrateMode: 'variable',
+    });
+    let input: InstanceType<typeof Input> | null = null;
+
+    try {
+      if (videoUrl) {
+        const blob =
+          sourceFile.current ?? (await (await fetch(videoUrl)).blob());
+        input = new Input({
+          formats: ALL_FORMATS,
+          source: new BlobSource(blob),
+        });
+      }
+
+      const videoTrack = input ? await input.getPrimaryVideoTrack() : null;
+      if (videoTrack && !(await videoTrack.canDecode())) return null;
+      const audioTrack =
+        input && !p.muted ? await input.getPrimaryAudioTrack() : null;
+      if (audioTrack && (!(await audioTrack.canDecode()) || p.speed !== 1))
+        return null;
+      const inputStart = input ? await input.getFirstTimestamp() : 0;
+
+      const audioOptions = audioTrack
+        ? {
+            numberOfChannels: await audioTrack.getNumberOfChannels(),
+            sampleRate: await audioTrack.getSampleRate(),
+            quality: audioQuality,
+          }
+        : null;
+      const canUseMp4 =
+        (await canEncodeVideo('avc', {
+          width: ew,
+          height: eh,
+          quality: videoQuality,
+          hardwareAcceleration: 'prefer-hardware',
+        })) &&
+        (!audioOptions || (await canEncodeAudio('aac', audioOptions)));
+      if (!canUseMp4) return null;
+
+      const format = new Mp4OutputFormat({ fastStart: 'in-memory' });
+      const target = new BufferTarget();
+      const output = new Output({ format, target });
+      const videoSource = new CanvasSource(out, {
+        codec: 'avc',
+        quality: videoQuality,
+        keyFrameInterval: 2,
+        hardwareAcceleration: 'prefer-hardware',
+        latencyMode: 'quality',
+      });
+      output.addVideoTrack(videoSource, { frameRate });
+      const audioSource = audioOptions
+        ? new AudioSampleSource({
+            codec: 'aac',
+            quality: audioQuality,
+          })
+        : null;
+      if (audioSource) output.addAudioTrack(audioSource);
+      await output.start();
+
+      const encodeVideo = async () => {
+        const sourceCanvas = document.createElement('canvas');
+        const sourceContext = sourceCanvas.getContext('2d');
+        if (videoTrack && sourceContext) {
+          sourceCanvas.width = await videoTrack.getDisplayWidth();
+          sourceCanvas.height = await videoTrack.getDisplayHeight();
+          sourceContext.fillStyle = '#151815';
+          sourceContext.fillRect(0, 0, sourceCanvas.width, sourceCanvas.height);
+        }
+        const frameCount = Math.max(1, Math.ceil(total * frameRate));
+        const timestamps = function* () {
+          for (let index = 0; index < frameCount; index++)
+            yield (
+              inputStart + sourceTime(p, Math.min(index * frameDuration, total))
+            );
+        };
+        const samples = videoTrack
+          ? new VideoSampleSink(videoTrack).samplesAtTimestamps(timestamps())
+          : null;
+        let index = 0;
+
+        const addFrame = async (
+          sample: Awaited<
+            ReturnType<InstanceType<typeof VideoSampleSink>['getSample']>
+          >,
+        ) => {
+          if (sample && sourceContext) {
+            if (
+              sourceCanvas.width !== sample.displayWidth ||
+              sourceCanvas.height !== sample.displayHeight
+            ) {
+              sourceCanvas.width = sample.displayWidth;
+              sourceCanvas.height = sample.displayHeight;
+            }
+            sample.draw(
+              sourceContext,
+              0,
+              0,
+              sourceCanvas.width,
+              sourceCanvas.height,
+            );
+          }
+          const timestamp = index * frameDuration;
+          renderFrame(out, p, timestamp, videoTrack ? sourceCanvas : null);
+          await videoSource.add(
+            timestamp,
+            Math.min(frameDuration, Math.max(0, total - timestamp)),
+            { keyFrame: index % Math.max(1, Math.round(frameRate * 2)) === 0 },
+          );
+          sample?.close();
+          index++;
+          const nextProgress = Math.min(99, (index / frameCount) * 100);
+          if (
+            index === frameCount ||
+            index % Math.max(1, Math.round(frameRate / 4)) === 0
+          )
+            setProgress(nextProgress);
+        };
+
+        if (samples) {
+          for await (const sample of samples) {
+            if (cancel.current) {
+              sample?.close();
+              break;
+            }
+            await addFrame(sample);
+          }
+        } else {
+          while (index < frameCount && !cancel.current) await addFrame(null);
+        }
+      };
+
+      const encodeAudio = async () => {
+        if (!audioTrack || !audioSource) return;
+        const sink = new AudioSampleSink(audioTrack);
+        let outputOffset = 0;
+        for (const clip of p.clips) {
+          const clipStart = inputStart + clip.start;
+          const clipEnd = inputStart + clip.end;
+          for await (const sample of sink.samples(clipStart, clipEnd)) {
+            if (cancel.current) {
+              sample.close();
+              return;
+            }
+            const startFrame = clamp(
+              Math.ceil((clipStart - sample.timestamp) * sample.sampleRate),
+              0,
+              sample.numberOfFrames,
+            );
+            const endFrame = clamp(
+              Math.ceil((clipEnd - sample.timestamp) * sample.sampleRate),
+              startFrame,
+              sample.numberOfFrames,
+            );
+            if (endFrame > startFrame) {
+              const trimmed = sample.trim(startFrame, endFrame);
+              trimmed.setTimestamp(
+                outputOffset + trimmed.timestamp - clipStart,
+              );
+              await audioSource.add(trimmed);
+              trimmed.close();
+            }
+            sample.close();
+          }
+          outputOffset += clip.end - clip.start;
+        }
+      };
+
+      await Promise.all([encodeVideo(), encodeAudio()]);
+      if (cancel.current) {
+        await output.cancel();
+        return { canceled: true as const };
+      }
+      await output.finalize();
+      if (!target.buffer) throw new Error('The fast encoder returned no data.');
+      return {
+        canceled: false as const,
+        blob: new Blob([target.buffer], { type: format.mimeType }),
+        extension: format.fileExtension,
+      };
+    } finally {
+      input?.dispose();
+    }
+  }
+
   async function exportVideo() {
-    if (typeof MediaRecorder === 'undefined') {
-      inform(
-        'Video export is not supported in this browser. Try Chrome or Edge.',
-      );
-      return;
-    }
-    const mime = [
-      'video/mp4;codecs=avc1.42001f,mp4a.40.2',
-      'video/mp4',
-      'video/webm;codecs=vp9,opus',
-      'video/webm',
-    ].find((m) => MediaRecorder.isTypeSupported(m));
-    if (!mime) {
-      inform('No supported video encoder. Try Chrome or Edge.');
-      return;
-    }
     setPlaying(false);
     setExporting(true);
     setProgress(0);
     cancel.current = false;
+    try {
+      const fastExport = await exportVideoFast();
+      if (fastExport) {
+        if (!fastExport.canceled) {
+          download(
+            fastExport.blob,
+            `${p.name || 'Take demo'}.${fastExport.extension}`,
+          );
+          setProgress(100);
+          inform('Your video is ready. Download started.');
+        }
+        setExporting(false);
+        setTime(0);
+        return;
+      }
+    } catch (error) {
+      console.warn('Fast export unavailable; using real-time export.', error);
+      if (cancel.current) {
+        setExporting(false);
+        setTime(0);
+        return;
+      }
+      setProgress(0);
+    }
+
+    if (typeof MediaRecorder === 'undefined') {
+      inform(
+        'No compatible local video encoder was found. Try Chrome or Edge.',
+      );
+      setExporting(false);
+      return;
+    }
+    const mp4Types = ['video/mp4', 'video/mp4;codecs=avc1.42001f,mp4a.40.2'];
+    const mime = mp4Types.find((m) => MediaRecorder.isTypeSupported(m));
+    if (!mime) {
+      inform(
+        'MP4 export is unavailable in this browser. Open the editor in the latest Chrome or Edge.',
+      );
+      setExporting(false);
+      return;
+    }
     const out = document.createElement('canvas'),
       [ew, eh] = size(p.ratio, exportQuality);
     out.width = ew;
     out.height = eh;
-    const stream = out.captureStream(Number(fps)),
+    const recorderFrameRate = Math.min(Number(fps), 30);
+    const stream = out.captureStream(recorderFrameRate),
       v = video.current;
     let dest: MediaStreamAudioDestinationNode | undefined,
       raf = 0;
@@ -985,9 +1242,13 @@ export default function Home() {
         v.muted = p.muted;
       }
       renderFrame(out, p, 0, videoUrl ? v : null);
+      // MediaRecorder implementations become unreliable at very high target
+      // bitrates. The MediaBunny fast path can use the full requested bitrate;
+      // this compatibility path favors completing the export successfully.
+      const recorderBitrate = Math.min(bitrate, 32_000_000);
       const recorder = new MediaRecorder(stream, {
           mimeType: mime,
-          videoBitsPerSecond: bitrate,
+          videoBitsPerSecond: recorderBitrate,
         }),
         chunks: BlobPart[] = [];
       const done = new Promise<Blob>((resolve, reject) => {
@@ -995,14 +1256,32 @@ export default function Home() {
           if (e.data.size) chunks.push(e.data);
         };
         recorder.onstop = () => resolve(new Blob(chunks, { type: mime }));
-        recorder.onerror = () =>
-          reject(new Error('The video encoder stopped unexpectedly.'));
+        recorder.onerror = (event) => {
+          const encoderError = (event as Event & { error?: DOMException })
+            .error;
+          reject(
+            encoderError ??
+              new Error(
+                'The compatibility video encoder stopped unexpectedly.',
+              ),
+          );
+        };
       });
-      recorder.start(250);
+      // Observe rejection immediately. Waiting until the render loop finishes
+      // allowed a mid-export encoder failure to surface as an unhandled promise.
+      void done.catch(() => undefined);
       if (v && videoUrl) await v.play();
+      recorder.start(250);
       let elapsed = 0,
-        previous = performance.now();
-      await new Promise<void>((resolve) => {
+        previous = performance.now(),
+        lastRendered = 0,
+        lastProgressUpdate = 0;
+      if (Number(fps) > recorderFrameRate)
+        inform(
+          'This browser uses smooth 30 fps compatibility encoding. Chrome or Edge with WebCodecs can export at 60 fps.',
+        );
+      const frameInterval = 1000 / recorderFrameRate;
+      const rendering = new Promise<void>((resolve) => {
         const frame = (now: number) => {
           const dt = Math.min((now - previous) / 1000, 0.1);
           previous = now;
@@ -1014,10 +1293,14 @@ export default function Home() {
             if (Math.abs(v.currentTime - desired) > 0.3 && !v.seeking)
               v.currentTime = desired;
           }
-          renderFrame(out, p, t, videoUrl ? v : null);
-          if (canvas.current)
-            renderFrame(canvas.current, p, t, videoUrl ? v : null);
-          setProgress(Math.min(99, (t / total) * 100));
+          if (now - lastRendered >= frameInterval - 1 || t >= total) {
+            renderFrame(out, p, t, videoUrl ? v : null);
+            lastRendered = now;
+          }
+          if (now - lastProgressUpdate >= 100 || t >= total) {
+            setProgress(Math.min(99, (t / total) * 100));
+            lastProgressUpdate = now;
+          }
           if (t >= total || cancel.current) {
             resolve();
             return;
@@ -1026,13 +1309,11 @@ export default function Home() {
         };
         raf = requestAnimationFrame(frame);
       });
-      recorder.stop();
+      await Promise.race([rendering, done.then(() => undefined)]);
+      if (recorder.state !== 'inactive') recorder.stop();
       const blob = await done;
       if (!cancel.current) {
-        download(
-          blob,
-          `${p.name || 'Take demo'}.${mime.startsWith('video/mp4') ? 'mp4' : 'webm'}`,
-        );
+        download(blob, `${p.name || 'Take demo'}.mp4`);
         setProgress(100);
         inform('Your video is ready. Download started.');
       }
@@ -2020,7 +2301,6 @@ export default function Home() {
                 onClick={() => void toggleFullscreen()}
               >
                 {fullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-                <span>{fullscreen ? 'Exit' : 'Full screen'}</span>
               </button>
             </div>
           </div>
@@ -2060,6 +2340,7 @@ export default function Home() {
             <span className="timeline-scale" aria-label="Timeline scale">
               <button
                 aria-label="Zoom timeline out"
+                title="Zoom timeline out"
                 disabled={timelineScale === 1}
                 onClick={() =>
                   setTimelineScale((value) => Math.max(1, value - 0.5))
@@ -2070,6 +2351,7 @@ export default function Home() {
               <output>{timelineScale.toFixed(1)}×</output>
               <button
                 aria-label="Zoom timeline in"
+                title="Zoom timeline in"
                 disabled={timelineScale === 4}
                 onClick={() =>
                   setTimelineScale((value) => Math.min(4, value + 0.5))
@@ -2596,70 +2878,102 @@ export default function Home() {
         }}
       >
         <DialogContent className="export-dialog" showCloseButton={!exporting}>
-          <DialogTitle>Ready for your close-up.</DialogTitle>
-          <DialogDescription>
-            Export your edit with backgrounds, zooms, and callouts included.
-          </DialogDescription>
-          <div className="export-summary">
-            <Film size={26} />
-            <div>
-              <b>{p.name}</b>
-              <span>
-                {formatTime(total)} · {size(p.ratio, exportQuality).join(' × ')}{' '}
-                · {fps} fps
-              </span>
+          <div className="export-dialog-body">
+            <DialogTitle>Ready for your close-up.</DialogTitle>
+            <DialogDescription>
+              Export your edit with backgrounds, zooms, and callouts included.
+            </DialogDescription>
+            <div className="export-summary">
+              <Film size={26} />
+              <div>
+                <b>{p.name}</b>
+                <span>
+                  {formatTime(total)} ·{' '}
+                  {size(p.ratio, exportQuality).join(' × ')} ·{' '}
+                  {effectiveExportFps} fps · MP4
+                </span>
+              </div>
             </div>
+            <label>Resolution</label>
+            <Choice
+              label="Export resolution"
+              value={quality}
+              options={[
+                ['source', `Match source · ${sourceHeight || 1080}p`],
+                ['720', '720p · Smaller file'],
+                ['1080', '1080p · High quality'],
+                ['1440', '1440p · QHD'],
+                ['2160', '2160p · 4K'],
+              ]}
+              onChange={setQuality}
+            />
+            <label>Frame rate</label>
+            <Choice
+              label="Export frame rate"
+              value={fps}
+              options={[
+                ['24', '24 fps · Cinematic'],
+                ['30', '30 fps · Standard'],
+                [
+                  '60',
+                  webCodecsAvailable
+                    ? '60 fps · Smooth'
+                    : '60 fps · Requires WebCodecs',
+                ],
+                [
+                  '120',
+                  webCodecsAvailable
+                    ? '120 fps · High refresh'
+                    : '120 fps · Requires WebCodecs',
+                ],
+              ]}
+              onChange={setFps}
+            />
+            <label>Encoding quality</label>
+            <Choice
+              label="Encoding quality"
+              value={encodingQuality}
+              options={[
+                ['compact', 'Compact · Smaller file'],
+                ['high', 'High · Recommended'],
+                ['maximum', 'Maximum · Best detail'],
+              ]}
+              onChange={setEncodingQuality}
+            />
+            <label>Target bitrate</label>
+            <Choice
+              label="Export target bitrate"
+              value={bitrateSetting}
+              options={[
+                ['auto', 'Auto · Based on resolution'],
+                ['4', '4 Mbps · Compact'],
+                ['8', '8 Mbps · Standard HD'],
+                ['16', '16 Mbps · High detail'],
+                ['32', '32 Mbps · Maximum'],
+              ]}
+              onChange={setBitrateSetting}
+            />
+            <p className="panel-note">
+              Target {(bitrate / 1000000).toFixed(1)} Mbps · estimated{' '}
+              {Math.round((bitrate * total) / 8 / 1000000)} MB. Higher settings
+              cannot restore detail or frames missing from the source. Actual
+              frame rate depends on your device. The quality preset adjusts
+              bitrate only when Target bitrate is set to Auto. High frame rates
+              make Take's camera motion smoother but cannot invent detail
+              between frames in the source recording.
+            </p>
+            <p className="panel-note">
+              {webCodecsAvailable
+                ? 'MediaBunny uses deterministic frame timing and H.264 for smooth MP4 exports.'
+                : 'This browser lacks WebCodecs, so MP4 compatibility exports are capped at a stable 30 fps.'}{' '}
+              Keep this tab visible until it finishes.
+            </p>
           </div>
-          <label>Resolution</label>
-          <Choice
-            label="Export resolution"
-            value={quality}
-            options={[
-              ['source', `Match source · ${sourceHeight || 1080}p`],
-              ['720', '720p · Smaller file'],
-              ['1080', '1080p · High quality'],
-              ['1440', '1440p · QHD'],
-              ['2160', '2160p · 4K'],
-            ]}
-            onChange={setQuality}
-          />
-          <label>Frame rate</label>
-          <Choice
-            label="Export frame rate"
-            value={fps}
-            options={[
-              ['24', '24 fps · Cinematic'],
-              ['30', '30 fps · Standard'],
-              ['60', '60 fps · Smooth'],
-            ]}
-            onChange={setFps}
-          />
-          <label>Encoding quality</label>
-          <Choice
-            label="Encoding quality"
-            value={encodingQuality}
-            options={[
-              ['compact', 'Compact · Smaller file'],
-              ['high', 'High · Recommended'],
-              ['maximum', 'Maximum · Best detail'],
-            ]}
-            onChange={setEncodingQuality}
-          />
-          <p className="panel-note">
-            Target {(bitrate / 1000000).toFixed(1)} Mbps · estimated{' '}
-            {Math.round((bitrate * total) / 8 / 1000000)} MB. Higher settings
-            cannot restore detail or frames missing from the source. Actual
-            frame rate depends on your device.
-          </p>
-          <p className="panel-note">
-            MP4 when your browser supports it; WebM otherwise. Export runs in
-            real time. Keep this tab visible until it finishes.
-          </p>
           {exporting ? (
             <>
               <Progress aria-label="Export progress" value={progress} />
               <div className="export-progress">
-                <span>Rendering your demo… {Math.round(progress)}%</span>
+                <span>Encoding your demo… {Math.round(progress)}%</span>
                 <button
                   onClick={() => {
                     cancel.current = true;
